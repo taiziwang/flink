@@ -19,9 +19,7 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.core.execution.SavepointFormatType;
-import org.apache.flink.runtime.OperatorIDPair;
-import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointV2;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -31,226 +29,111 @@ import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.runtime.state.testutils.TestCompletedCheckpointStorageLocation;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 
-import static org.apache.flink.runtime.checkpoint.StateHandleDummyUtil.createNewInputChannelStateHandle;
-import static org.apache.flink.runtime.checkpoint.StateHandleDummyUtil.createNewResultSubpartitionStateHandle;
-import static org.apache.flink.runtime.checkpoint.StateObjectCollection.singleton;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * A test that checks that checkpoint metadata loading works properly, including validation of
- * resumed state and dropped state.
+ * A test that checks that checkpoint metadata loading works properly, including validation
+ * of resumed state and dropped state.
  */
 public class CheckpointMetadataLoadingTest {
 
-    private final ClassLoader cl = getClass().getClassLoader();
+	@Rule
+	public final TemporaryFolder tmpFolder = new TemporaryFolder();
 
-    /** Tests correct savepoint loading. */
-    @Test
-    public void testAllStateRestored() throws Exception {
-        final JobID jobId = new JobID();
-        final OperatorID operatorId = new OperatorID();
-        final long checkpointId = Integer.MAX_VALUE + 123123L;
-        final int parallelism = 128128;
+	/**
+	 * Tests loading and validation of savepoints with correct setup,
+	 * parallelism mismatch, and a missing task.
+	 */
+	@Test
+	public void testLoadAndValidateSavepoint() throws Exception {
+		File tmp = tmpFolder.newFolder();
 
-        final CompletedCheckpointStorageLocation testSavepoint =
-                createSavepointWithOperatorSubtaskState(checkpointId, operatorId, parallelism);
-        final Map<JobVertexID, ExecutionJobVertex> tasks =
-                createTasks(operatorId, parallelism, parallelism);
+		int parallelism = 128128;
+		long checkpointId = Integer.MAX_VALUE + 123123L;
+		JobVertexID jobVertexID = new JobVertexID();
+		OperatorID operatorID = OperatorID.fromJobVertexID(jobVertexID);
 
-        final CompletedCheckpoint loaded =
-                Checkpoints.loadAndValidateCheckpoint(
-                        jobId,
-                        tasks,
-                        testSavepoint,
-                        cl,
-                        false,
-                        CheckpointProperties.forSavepoint(false, SavepointFormatType.CANONICAL));
+		OperatorSubtaskState subtaskState = new OperatorSubtaskState(
+				new OperatorStreamStateHandle(
+				Collections.emptyMap(),
+				new ByteStreamStateHandle("testHandler", new byte[0])),
+				null,
+				null,
+				null);
 
-        assertEquals(jobId, loaded.getJobId());
-        assertEquals(checkpointId, loaded.getCheckpointID());
-    }
+		OperatorState state = new OperatorState(operatorID, parallelism, parallelism);
+		state.putState(0, subtaskState);
 
-    /** Tests that savepoint loading fails when there is a max-parallelism mismatch. */
-    @Test
-    public void testMaxParallelismMismatch() throws Exception {
-        final OperatorID operatorId = new OperatorID();
-        final int parallelism = 128128;
+		Map<OperatorID, OperatorState> taskStates = new HashMap<>();
+		taskStates.put(operatorID, state);
 
-        final CompletedCheckpointStorageLocation testSavepoint =
-                createSavepointWithOperatorSubtaskState(242L, operatorId, parallelism);
-        final Map<JobVertexID, ExecutionJobVertex> tasks =
-                createTasks(operatorId, parallelism, parallelism + 1);
+		JobID jobId = new JobID();
 
-        try {
-            Checkpoints.loadAndValidateCheckpoint(
-                    new JobID(),
-                    tasks,
-                    testSavepoint,
-                    cl,
-                    false,
-                    CheckpointProperties.forSavepoint(false, SavepointFormatType.CANONICAL));
-            fail("Did not throw expected Exception");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("Max parallelism mismatch"));
-        }
-    }
+		// Store savepoint
+		final SavepointV2 savepoint = new SavepointV2(checkpointId, taskStates.values(), Collections.emptyList());
+		final StreamStateHandle serializedMetadata;
 
-    /**
-     * Tests that savepoint loading fails when there is non-restored state, but it is not allowed.
-     */
-    @Test
-    public void testNonRestoredStateWhenDisallowed() throws Exception {
-        final OperatorID operatorId = new OperatorID();
-        final int parallelism = 9;
+		try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+			Checkpoints.storeCheckpointMetadata(savepoint, os);
+			serializedMetadata = new ByteStreamStateHandle("checkpoint", os.toByteArray());
+		}
 
-        final CompletedCheckpointStorageLocation testSavepoint =
-                createSavepointWithOperatorSubtaskState(242L, operatorId, parallelism);
-        final Map<JobVertexID, ExecutionJobVertex> tasks = Collections.emptyMap();
+		final CompletedCheckpointStorageLocation storageLocation = new TestCompletedCheckpointStorageLocation(
+				serializedMetadata, "dummy/pointer");
 
-        try {
-            Checkpoints.loadAndValidateCheckpoint(
-                    new JobID(),
-                    tasks,
-                    testSavepoint,
-                    cl,
-                    false,
-                    CheckpointProperties.forSavepoint(false, SavepointFormatType.CANONICAL));
-            fail("Did not throw expected Exception");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("allowNonRestoredState"));
-        }
-    }
+		ExecutionJobVertex vertex = mock(ExecutionJobVertex.class);
+		when(vertex.getParallelism()).thenReturn(parallelism);
+		when(vertex.getMaxParallelism()).thenReturn(parallelism);
+		when(vertex.getOperatorIDs()).thenReturn(Collections.singletonList(operatorID));
 
-    /**
-     * Tests that savepoint loading succeeds when there is non-restored state and it is not allowed.
-     */
-    @Test
-    public void testNonRestoredStateWhenAllowed() throws Exception {
-        final OperatorID operatorId = new OperatorID();
-        final int parallelism = 9;
+		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
+		tasks.put(jobVertexID, vertex);
 
-        final CompletedCheckpointStorageLocation testSavepoint =
-                createSavepointWithOperatorSubtaskState(242L, operatorId, parallelism);
-        final Map<JobVertexID, ExecutionJobVertex> tasks = Collections.emptyMap();
+		ClassLoader ucl = Thread.currentThread().getContextClassLoader();
 
-        final CompletedCheckpoint loaded =
-                Checkpoints.loadAndValidateCheckpoint(
-                        new JobID(),
-                        tasks,
-                        testSavepoint,
-                        cl,
-                        true,
-                        CheckpointProperties.forSavepoint(false, SavepointFormatType.CANONICAL));
+		// 1) Load and validate: everything correct
+		CompletedCheckpoint loaded = Checkpoints.loadAndValidateCheckpoint(jobId, tasks, storageLocation, ucl, false);
 
-        assertTrue(loaded.getOperatorStates().isEmpty());
-    }
+		assertEquals(jobId, loaded.getJobId());
+		assertEquals(checkpointId, loaded.getCheckpointID());
 
-    /**
-     * Tests that savepoint loading fails when there is non-restored coordinator state only, and
-     * non-restored state is not allowed.
-     */
-    @Test
-    public void testUnmatchedCoordinatorOnlyStateFails() throws Exception {
-        final OperatorID operatorID = new OperatorID();
-        final int maxParallelism = 1234;
+		// 2) Load and validate: max parallelism mismatch
+		when(vertex.getMaxParallelism()).thenReturn(222);
+		when(vertex.isMaxParallelismConfigured()).thenReturn(true);
 
-        final OperatorState state =
-                new OperatorState(operatorID, maxParallelism / 2, maxParallelism);
-        state.setCoordinatorState(new ByteStreamStateHandle("coordinatorState", new byte[0]));
+		try {
+			Checkpoints.loadAndValidateCheckpoint(jobId, tasks, storageLocation, ucl, false);
+			fail("Did not throw expected Exception");
+		} catch (IllegalStateException expected) {
+			assertTrue(expected.getMessage().contains("Max parallelism mismatch"));
+		}
 
-        final CompletedCheckpointStorageLocation testSavepoint =
-                createSavepointWithOperatorState(42L, state);
-        final Map<JobVertexID, ExecutionJobVertex> tasks = Collections.emptyMap();
+		// 3) Load and validate: missing vertex
+		assertNotNull(tasks.remove(jobVertexID));
 
-        try {
-            Checkpoints.loadAndValidateCheckpoint(
-                    new JobID(),
-                    tasks,
-                    testSavepoint,
-                    cl,
-                    false,
-                    CheckpointProperties.forSavepoint(false, SavepointFormatType.CANONICAL));
-            fail("Did not throw expected Exception");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("allowNonRestoredState"));
-        }
-    }
+		try {
+			Checkpoints.loadAndValidateCheckpoint(jobId, tasks, storageLocation, ucl, false);
+			fail("Did not throw expected Exception");
+		} catch (IllegalStateException expected) {
+			assertTrue(expected.getMessage().contains("allowNonRestoredState"));
+		}
 
-    // ------------------------------------------------------------------------
-    //  setup utils
-    // ------------------------------------------------------------------------
-
-    private static CompletedCheckpointStorageLocation createSavepointWithOperatorState(
-            final long checkpointId, final OperatorState state) throws IOException {
-
-        final CheckpointMetadata savepoint =
-                new CheckpointMetadata(
-                        checkpointId, Collections.singletonList(state), Collections.emptyList());
-        final StreamStateHandle serializedMetadata;
-
-        try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
-            Checkpoints.storeCheckpointMetadata(savepoint, os);
-            serializedMetadata = new ByteStreamStateHandle("checkpoint", os.toByteArray());
-        }
-
-        return new TestCompletedCheckpointStorageLocation(serializedMetadata, "dummy/pointer");
-    }
-
-    private static CompletedCheckpointStorageLocation createSavepointWithOperatorSubtaskState(
-            final long checkpointId, final OperatorID operatorId, final int parallelism)
-            throws IOException {
-
-        final Random rnd = new Random();
-
-        final OperatorSubtaskState subtaskState =
-                OperatorSubtaskState.builder()
-                        .setManagedOperatorState(
-                                new OperatorStreamStateHandle(
-                                        Collections.emptyMap(),
-                                        new ByteStreamStateHandle("testHandler", new byte[0])))
-                        .setInputChannelState(singleton(createNewInputChannelStateHandle(10, rnd)))
-                        .setResultSubpartitionState(
-                                singleton(createNewResultSubpartitionStateHandle(10, rnd)))
-                        .build();
-
-        final OperatorState state = new OperatorState(operatorId, parallelism, parallelism);
-        state.putState(0, subtaskState);
-
-        return createSavepointWithOperatorState(checkpointId, state);
-    }
-
-    private static Map<JobVertexID, ExecutionJobVertex> createTasks(
-            OperatorID operatorId, int parallelism, int maxParallelism) {
-        final JobVertexID vertexId =
-                new JobVertexID(operatorId.getLowerPart(), operatorId.getUpperPart());
-
-        ExecutionJobVertex vertex = mock(ExecutionJobVertex.class);
-        when(vertex.getParallelism()).thenReturn(parallelism);
-        when(vertex.getMaxParallelism()).thenReturn(maxParallelism);
-        when(vertex.getOperatorIDs())
-                .thenReturn(Collections.singletonList(OperatorIDPair.generatedIDOnly(operatorId)));
-
-        if (parallelism != maxParallelism) {
-            when(vertex.canRescaleMaxParallelism(anyInt())).thenReturn(false);
-        }
-
-        Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
-        tasks.put(vertexId, vertex);
-
-        return tasks;
-    }
+		// 4) Load and validate: ignore missing vertex
+		Checkpoints.loadAndValidateCheckpoint(jobId, tasks, storageLocation, ucl, true);
+	}
 }

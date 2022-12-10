@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 
-export interface TaskManagerList {
-  taskmanagers: TaskManagersItem[];
+export interface TaskManagerListInterface {
+  taskmanagers: TaskmanagersItemInterface[];
 }
 
-export interface TaskManagerDetail {
+export interface TaskManagerDetailInterface {
   id: string;
   path: string;
   dataPort: number;
@@ -29,22 +29,9 @@ export interface TaskManagerDetail {
   freeSlots: number;
   hardware: Hardware;
   metrics: Metrics;
-  memoryConfiguration: MemoryConfiguration;
-  blocked?: boolean;
 }
 
-export interface TaskManagerLogItem {
-  name: string;
-  size: number;
-  mtime: number;
-}
-
-export interface TaskManagerLogDetail {
-  data: string;
-  url: string;
-}
-
-export interface TaskManagersItem {
+export interface TaskmanagersItemInterface {
   id: string;
   path: string;
   dataPort: number;
@@ -52,7 +39,6 @@ export interface TaskManagersItem {
   slotsNumber: number;
   freeSlots: number;
   hardware: Hardware;
-  blocked?: boolean;
 }
 
 interface Hardware {
@@ -80,30 +66,8 @@ interface Metrics {
   garbageCollectors: GarbageCollectorsItem[];
 }
 
-interface MemoryConfiguration {
-  frameworkHeap: number;
-  frameworkOffHeap: number;
-  jvmMetaspace: number;
-  jvmOverhead: number;
-  managedMemory: number;
-  networkMemory: number;
-  taskHeap: number;
-  taskOffHeap: number;
-  totalFlinkMemory: number;
-  totalProcessMemory: number;
-}
-
 interface GarbageCollectorsItem {
   name: string;
   count: number;
   time: number;
-}
-
-export interface TaskManagerThreadDump {
-  threadInfos: TaskManagerThreadInfo[];
-}
-
-interface TaskManagerThreadInfo {
-  threadName: string;
-  stringifiedThreadInfo: string;
 }

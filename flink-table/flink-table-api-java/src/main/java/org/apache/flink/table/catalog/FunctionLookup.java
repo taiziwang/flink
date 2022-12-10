@@ -22,36 +22,59 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.delegation.PlannerTypeInferenceUtil;
 import org.apache.flink.table.functions.BuiltInFunctionDefinition;
+import org.apache.flink.table.functions.FunctionDefinition;
 
 import java.util.Optional;
 
 /**
- * Catalog of functions that can resolve the name of a function to a {@link
- * ContextResolvedFunction}.
+ * Catalog of functions that can resolve the name of a function to a {@link FunctionLookup.Result}.
  */
 @Internal
 public interface FunctionLookup {
 
-    /**
-     * Lookup a function by function identifier. The identifier is parsed The lookup is case
-     * insensitive.
-     */
-    Optional<ContextResolvedFunction> lookupFunction(String stringIdentifier);
+	/**
+	 * Lookup a function by name. The lookup is case insensitive.
+	 */
+	Optional<Result> lookupFunction(String name);
 
-    /** Lookup a function by function identifier. The lookup is case insensitive. */
-    Optional<ContextResolvedFunction> lookupFunction(UnresolvedIdentifier identifier);
+	/**
+	 * Helper method for looking up a built-in function.
+	 */
+	default Result lookupBuiltInFunction(BuiltInFunctionDefinition definition) {
+		return lookupFunction(definition.getName())
+			.orElseThrow(() -> new TableException(
+				String.format(
+					"Required built-in function [%s] could not be found in any catalog.",
+					definition.getName())
+				)
+			);
+	}
 
-    /** Helper method for looking up a built-in function. */
-    default ContextResolvedFunction lookupBuiltInFunction(BuiltInFunctionDefinition definition) {
-        return lookupFunction(UnresolvedIdentifier.of(definition.getName()))
-                .orElseThrow(
-                        () ->
-                                new TableException(
-                                        String.format(
-                                                "Required built-in function [%s] could not be found in any catalog.",
-                                                definition.getName())));
-    }
+	/**
+	 * Temporary utility until the new type inference is fully functional.
+	 */
+	PlannerTypeInferenceUtil getPlannerTypeInferenceUtil();
 
-    /** Temporary utility until the new type inference is fully functional. */
-    PlannerTypeInferenceUtil getPlannerTypeInferenceUtil();
+	/**
+	 * Result of a function lookup.
+	 */
+	class Result {
+
+		private final ObjectIdentifier objectIdentifier;
+
+		private final FunctionDefinition functionDefinition;
+
+		public Result(ObjectIdentifier objectIdentifier, FunctionDefinition functionDefinition) {
+			this.objectIdentifier = objectIdentifier;
+			this.functionDefinition = functionDefinition;
+		}
+
+		public ObjectIdentifier getObjectIdentifier() {
+			return objectIdentifier;
+		}
+
+		public FunctionDefinition getFunctionDefinition() {
+			return functionDefinition;
+		}
+	}
 }

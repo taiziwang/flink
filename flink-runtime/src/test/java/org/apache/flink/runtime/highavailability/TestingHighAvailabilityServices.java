@@ -22,276 +22,229 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.blob.BlobStore;
 import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
-import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedJobResultStore;
-import org.apache.flink.runtime.jobmanager.JobGraphStore;
+import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneRunningJobsRegistry;
+import org.apache.flink.runtime.jobmanager.SubmittedJobGraphStore;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
-import org.apache.flink.util.concurrent.FutureUtils;
 
 import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.function.Function;
 
 /**
- * A variant of the HighAvailabilityServices for testing. Each individual service can be set to an
- * arbitrary implementation, such as a mock or default service.
+ * A variant of the HighAvailabilityServices for testing. Each individual service can be set
+ * to an arbitrary implementation, such as a mock or default service.
  */
 public class TestingHighAvailabilityServices implements HighAvailabilityServices {
 
-    private volatile LeaderRetrievalService resourceManagerLeaderRetriever;
+	private volatile LeaderRetrievalService resourceManagerLeaderRetriever;
 
-    private volatile LeaderRetrievalService dispatcherLeaderRetriever;
+	private volatile LeaderRetrievalService dispatcherLeaderRetriever;
 
-    private volatile LeaderRetrievalService clusterRestEndpointLeaderRetriever;
+	private volatile LeaderRetrievalService webMonitorEndpointLeaderRetriever;
 
-    private volatile Function<JobID, LeaderRetrievalService> jobMasterLeaderRetrieverFunction =
-            ignored -> null;
+	private volatile Function<JobID, LeaderRetrievalService> jobMasterLeaderRetrieverFunction = ignored -> null;
 
-    private volatile Function<JobID, LeaderElectionService> jobMasterLeaderElectionServiceFunction =
-            ignored -> null;
+	private volatile Function<JobID, LeaderElectionService> jobMasterLeaderElectionServiceFunction = ignored -> null;
 
-    private ConcurrentHashMap<JobID, LeaderRetrievalService> jobMasterLeaderRetrievers =
-            new ConcurrentHashMap<>();
+	private ConcurrentHashMap<JobID, LeaderRetrievalService> jobMasterLeaderRetrievers = new ConcurrentHashMap<>();
 
-    private ConcurrentHashMap<JobID, LeaderElectionService> jobManagerLeaderElectionServices =
-            new ConcurrentHashMap<>();
+	private ConcurrentHashMap<JobID, LeaderElectionService> jobManagerLeaderElectionServices = new ConcurrentHashMap<>();
 
-    private volatile LeaderElectionService resourceManagerLeaderElectionService;
+	private volatile LeaderElectionService resourceManagerLeaderElectionService;
 
-    private volatile LeaderElectionService dispatcherLeaderElectionService;
+	private volatile LeaderElectionService dispatcherLeaderElectionService;
 
-    private volatile LeaderElectionService clusterRestEndpointLeaderElectionService;
+	private volatile LeaderElectionService webMonitorEndpointLeaderElectionService;
 
-    private volatile CheckpointRecoveryFactory checkpointRecoveryFactory;
+	private volatile CheckpointRecoveryFactory checkpointRecoveryFactory;
 
-    private volatile JobGraphStore jobGraphStore;
+	private volatile SubmittedJobGraphStore submittedJobGraphStore;
 
-    private volatile JobResultStore jobResultStore = new EmbeddedJobResultStore();
+	private volatile RunningJobsRegistry runningJobsRegistry = new StandaloneRunningJobsRegistry();
 
-    private CompletableFuture<Void> closeFuture = new CompletableFuture<>();
+	// ------------------------------------------------------------------------
+	//  Setters for mock / testing implementations
+	// ------------------------------------------------------------------------
 
-    private CompletableFuture<Void> closeAndCleanupAllDataFuture = new CompletableFuture<>();
+	public void setResourceManagerLeaderRetriever(LeaderRetrievalService resourceManagerLeaderRetriever) {
+		this.resourceManagerLeaderRetriever = resourceManagerLeaderRetriever;
+	}
 
-    private volatile CompletableFuture<JobID> globalCleanupFuture;
+	public void setDispatcherLeaderRetriever(LeaderRetrievalService dispatcherLeaderRetriever) {
+		this.dispatcherLeaderRetriever = dispatcherLeaderRetriever;
+	}
 
-    // ------------------------------------------------------------------------
-    //  Setters for mock / testing implementations
-    // ------------------------------------------------------------------------
+	public void setWebMonitorEndpointLeaderRetriever(final LeaderRetrievalService webMonitorEndpointLeaderRetriever) {
+		this.webMonitorEndpointLeaderRetriever = webMonitorEndpointLeaderRetriever;
+	}
 
-    public void setResourceManagerLeaderRetriever(
-            LeaderRetrievalService resourceManagerLeaderRetriever) {
-        this.resourceManagerLeaderRetriever = resourceManagerLeaderRetriever;
-    }
+	public void setJobMasterLeaderRetriever(JobID jobID, LeaderRetrievalService jobMasterLeaderRetriever) {
+		this.jobMasterLeaderRetrievers.put(jobID, jobMasterLeaderRetriever);
+	}
 
-    public void setDispatcherLeaderRetriever(LeaderRetrievalService dispatcherLeaderRetriever) {
-        this.dispatcherLeaderRetriever = dispatcherLeaderRetriever;
-    }
+	public void setJobMasterLeaderElectionService(JobID jobID, LeaderElectionService leaderElectionService) {
+		this.jobManagerLeaderElectionServices.put(jobID, leaderElectionService);
+	}
 
-    public void setClusterRestEndpointLeaderRetriever(
-            final LeaderRetrievalService clusterRestEndpointLeaderRetriever) {
-        this.clusterRestEndpointLeaderRetriever = clusterRestEndpointLeaderRetriever;
-    }
+	public void setResourceManagerLeaderElectionService(LeaderElectionService leaderElectionService) {
+		this.resourceManagerLeaderElectionService = leaderElectionService;
+	}
 
-    public void setJobMasterLeaderRetriever(
-            JobID jobID, LeaderRetrievalService jobMasterLeaderRetriever) {
-        this.jobMasterLeaderRetrievers.put(jobID, jobMasterLeaderRetriever);
-    }
+	public void setDispatcherLeaderElectionService(LeaderElectionService leaderElectionService) {
+		this.dispatcherLeaderElectionService = leaderElectionService;
+	}
 
-    public void setJobMasterLeaderElectionService(
-            JobID jobID, LeaderElectionService leaderElectionService) {
-        this.jobManagerLeaderElectionServices.put(jobID, leaderElectionService);
-    }
+	public void setWebMonitorEndpointLeaderElectionService(final LeaderElectionService webMonitorEndpointLeaderElectionService) {
+		this.webMonitorEndpointLeaderElectionService = webMonitorEndpointLeaderElectionService;
+	}
 
-    public void setResourceManagerLeaderElectionService(
-            LeaderElectionService leaderElectionService) {
-        this.resourceManagerLeaderElectionService = leaderElectionService;
-    }
+	public void setCheckpointRecoveryFactory(CheckpointRecoveryFactory checkpointRecoveryFactory) {
+		this.checkpointRecoveryFactory = checkpointRecoveryFactory;
+	}
 
-    public void setDispatcherLeaderElectionService(LeaderElectionService leaderElectionService) {
-        this.dispatcherLeaderElectionService = leaderElectionService;
-    }
+	public void setSubmittedJobGraphStore(SubmittedJobGraphStore submittedJobGraphStore) {
+		this.submittedJobGraphStore = submittedJobGraphStore;
+	}
 
-    public void setClusterRestEndpointLeaderElectionService(
-            final LeaderElectionService clusterRestEndpointLeaderElectionService) {
-        this.clusterRestEndpointLeaderElectionService = clusterRestEndpointLeaderElectionService;
-    }
+	public void setRunningJobsRegistry(RunningJobsRegistry runningJobsRegistry) {
+		this.runningJobsRegistry = runningJobsRegistry;
+	}
 
-    public void setCheckpointRecoveryFactory(CheckpointRecoveryFactory checkpointRecoveryFactory) {
-        this.checkpointRecoveryFactory = checkpointRecoveryFactory;
-    }
+	public void setJobMasterLeaderElectionServiceFunction(Function<JobID, LeaderElectionService> jobMasterLeaderElectionServiceFunction) {
+		this.jobMasterLeaderElectionServiceFunction = jobMasterLeaderElectionServiceFunction;
+	}
 
-    public void setJobGraphStore(JobGraphStore jobGraphStore) {
-        this.jobGraphStore = jobGraphStore;
-    }
+	public void setJobMasterLeaderRetrieverFunction(Function<JobID, LeaderRetrievalService> jobMasterLeaderRetrieverFunction) {
+		this.jobMasterLeaderRetrieverFunction = jobMasterLeaderRetrieverFunction;
+	}
 
-    public void setJobResultStore(JobResultStore jobResultStore) {
-        this.jobResultStore = jobResultStore;
-    }
+	// ------------------------------------------------------------------------
+	//  HA Services Methods
+	// ------------------------------------------------------------------------
 
-    public void setJobMasterLeaderElectionServiceFunction(
-            Function<JobID, LeaderElectionService> jobMasterLeaderElectionServiceFunction) {
-        this.jobMasterLeaderElectionServiceFunction = jobMasterLeaderElectionServiceFunction;
-    }
+	@Override
+	public LeaderRetrievalService getResourceManagerLeaderRetriever() {
+		LeaderRetrievalService service = this.resourceManagerLeaderRetriever;
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("ResourceManagerLeaderRetriever has not been set");
+		}
+	}
 
-    public void setJobMasterLeaderRetrieverFunction(
-            Function<JobID, LeaderRetrievalService> jobMasterLeaderRetrieverFunction) {
-        this.jobMasterLeaderRetrieverFunction = jobMasterLeaderRetrieverFunction;
-    }
+	@Override
+	public LeaderRetrievalService getDispatcherLeaderRetriever() {
+		LeaderRetrievalService service = this.dispatcherLeaderRetriever;
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("ResourceManagerLeaderRetriever has not been set");
+		}
+	}
 
-    public void setCloseFuture(CompletableFuture<Void> closeFuture) {
-        this.closeFuture = closeFuture;
-    }
+	@Override
+	public LeaderRetrievalService getJobManagerLeaderRetriever(JobID jobID) {
+		LeaderRetrievalService service = jobMasterLeaderRetrievers.computeIfAbsent(jobID, jobMasterLeaderRetrieverFunction);
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("JobMasterLeaderRetriever has not been set");
+		}
+	}
 
-    public void setCloseAndCleanupAllDataFuture(
-            CompletableFuture<Void> closeAndCleanupAllDataFuture) {
-        this.closeAndCleanupAllDataFuture = closeAndCleanupAllDataFuture;
-    }
+	@Override
+	public LeaderRetrievalService getJobManagerLeaderRetriever(JobID jobID, String defaultJobManagerAddress) {
+		return getJobManagerLeaderRetriever(jobID);
+	}
 
-    public void setGlobalCleanupFuture(CompletableFuture<JobID> globalCleanupFuture) {
-        this.globalCleanupFuture = globalCleanupFuture;
-    }
+	@Override
+	public LeaderRetrievalService getWebMonitorLeaderRetriever() {
+		return webMonitorEndpointLeaderRetriever;
+	}
 
-    // ------------------------------------------------------------------------
-    //  HA Services Methods
-    // ------------------------------------------------------------------------
+	@Override
+	public LeaderElectionService getResourceManagerLeaderElectionService() {
+		LeaderElectionService service = resourceManagerLeaderElectionService;
 
-    @Override
-    public LeaderRetrievalService getResourceManagerLeaderRetriever() {
-        LeaderRetrievalService service = this.resourceManagerLeaderRetriever;
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException("ResourceManagerLeaderRetriever has not been set");
-        }
-    }
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("ResourceManagerLeaderElectionService has not been set");
+		}
+	}
 
-    @Override
-    public LeaderRetrievalService getDispatcherLeaderRetriever() {
-        LeaderRetrievalService service = this.dispatcherLeaderRetriever;
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException("ResourceManagerLeaderRetriever has not been set");
-        }
-    }
+	@Override
+	public LeaderElectionService getDispatcherLeaderElectionService() {
+		LeaderElectionService service = dispatcherLeaderElectionService;
 
-    @Override
-    public LeaderRetrievalService getJobManagerLeaderRetriever(JobID jobID) {
-        LeaderRetrievalService service =
-                jobMasterLeaderRetrievers.computeIfAbsent(jobID, jobMasterLeaderRetrieverFunction);
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException("JobMasterLeaderRetriever has not been set");
-        }
-    }
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("DispatcherLeaderElectionService has not been set");
+		}
+	}
 
-    @Override
-    public LeaderRetrievalService getJobManagerLeaderRetriever(
-            JobID jobID, String defaultJobManagerAddress) {
-        return getJobManagerLeaderRetriever(jobID);
-    }
+	@Override
+	public LeaderElectionService getJobManagerLeaderElectionService(JobID jobID) {
+		LeaderElectionService service = jobManagerLeaderElectionServices.computeIfAbsent(jobID, jobMasterLeaderElectionServiceFunction);
 
-    @Override
-    public LeaderRetrievalService getClusterRestEndpointLeaderRetriever() {
-        return clusterRestEndpointLeaderRetriever;
-    }
+		if (service != null) {
+			return service;
+		} else {
+			throw new IllegalStateException("JobMasterLeaderElectionService has not been set");
+		}
+	}
 
-    @Override
-    public LeaderElectionService getResourceManagerLeaderElectionService() {
-        LeaderElectionService service = resourceManagerLeaderElectionService;
+	@Override
+	public LeaderElectionService getWebMonitorLeaderElectionService() {
+		return webMonitorEndpointLeaderElectionService;
+	}
 
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException(
-                    "ResourceManagerLeaderElectionService has not been set");
-        }
-    }
+	@Override
+	public CheckpointRecoveryFactory getCheckpointRecoveryFactory() {
+		CheckpointRecoveryFactory factory = checkpointRecoveryFactory;
 
-    @Override
-    public LeaderElectionService getDispatcherLeaderElectionService() {
-        LeaderElectionService service = dispatcherLeaderElectionService;
+		if (factory != null) {
+			return factory;
+		} else {
+			throw new IllegalStateException("CheckpointRecoveryFactory has not been set");
+		}
+	}
 
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException("DispatcherLeaderElectionService has not been set");
-        }
-    }
+	@Override
+	public SubmittedJobGraphStore getSubmittedJobGraphStore() {
+		SubmittedJobGraphStore store = submittedJobGraphStore;
 
-    @Override
-    public LeaderElectionService getJobManagerLeaderElectionService(JobID jobID) {
-        LeaderElectionService service =
-                jobManagerLeaderElectionServices.computeIfAbsent(
-                        jobID, jobMasterLeaderElectionServiceFunction);
+		if (store != null) {
+			return store;
+		} else {
+			throw new IllegalStateException("SubmittedJobGraphStore has not been set");
 
-        if (service != null) {
-            return service;
-        } else {
-            throw new IllegalStateException("JobMasterLeaderElectionService has not been set");
-        }
-    }
+		}
+	}
 
-    @Override
-    public LeaderElectionService getClusterRestEndpointLeaderElectionService() {
-        return clusterRestEndpointLeaderElectionService;
-    }
+	@Override
+	public RunningJobsRegistry getRunningJobsRegistry() {
+		return runningJobsRegistry;
+	}
 
-    @Override
-    public CheckpointRecoveryFactory getCheckpointRecoveryFactory() {
-        CheckpointRecoveryFactory factory = checkpointRecoveryFactory;
+	@Override
+	public BlobStore createBlobStore() throws IOException {
+		return new VoidBlobStore();
+	}
 
-        if (factory != null) {
-            return factory;
-        } else {
-            throw new IllegalStateException("CheckpointRecoveryFactory has not been set");
-        }
-    }
+	// ------------------------------------------------------------------------
+	//  Shutdown
+	// ------------------------------------------------------------------------
 
-    @Override
-    public JobGraphStore getJobGraphStore() {
-        JobGraphStore store = jobGraphStore;
+	@Override
+	public void close() throws Exception {
+		// nothing to do
+	}
 
-        if (store != null) {
-            return store;
-        } else {
-            throw new IllegalStateException("JobGraphStore has not been set");
-        }
-    }
-
-    @Override
-    public JobResultStore getJobResultStore() {
-        return jobResultStore;
-    }
-
-    @Override
-    public BlobStore createBlobStore() throws IOException {
-        return new VoidBlobStore();
-    }
-
-    // ------------------------------------------------------------------------
-    //  Shutdown
-    // ------------------------------------------------------------------------
-
-    @Override
-    public void close() throws Exception {
-        closeFuture.complete(null);
-    }
-
-    @Override
-    public void closeAndCleanupAllData() throws Exception {
-        closeAndCleanupAllDataFuture.complete(null);
-    }
-
-    @Override
-    public CompletableFuture<Void> globalCleanupAsync(JobID jobID, Executor executor) {
-        if (globalCleanupFuture != null) {
-            globalCleanupFuture.complete(jobID);
-        }
-
-        return FutureUtils.completedVoidFuture();
-    }
+	@Override
+	public void closeAndCleanupAllData() throws Exception {
+		// nothing to do
+	}
 }

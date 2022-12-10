@@ -18,85 +18,77 @@
 
 package org.apache.flink.client.cli;
 
-import org.apache.flink.client.deployment.executors.RemoteExecutor;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.DeploymentOptions;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.util.FlinkException;
+import org.apache.flink.util.NetUtils;
+import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.slf4j.Logger;
+
+import java.net.InetSocketAddress;
+
+import static org.apache.flink.client.cli.CliFrontend.setJobManagerAddressInConfig;
 
 /**
- * Base class for {@link CustomCommandLine} implementations which specify a JobManager address and a
- * ZooKeeper namespace.
+ * Base class for {@link CustomCommandLine} implementations which specify a JobManager address and
+ * a ZooKeeper namespace.
+ *
  */
-public abstract class AbstractCustomCommandLine implements CustomCommandLine {
+public abstract class AbstractCustomCommandLine<T> implements CustomCommandLine<T> {
 
-    protected final Option zookeeperNamespaceOption =
-            new Option(
-                    "z",
-                    "zookeeperNamespace",
-                    true,
-                    "Namespace to create the Zookeeper sub-paths for high availability mode");
+	protected final Option zookeeperNamespaceOption = new Option("z", "zookeeperNamespace", true,
+		"Namespace to create the Zookeeper sub-paths for high availability mode");
 
-    @Override
-    public void addRunOptions(Options baseOptions) {
-        // nothing to add here
-    }
 
-    @Override
-    public void addGeneralOptions(Options baseOptions) {
-        baseOptions.addOption(zookeeperNamespaceOption);
-    }
+	protected final Option addressOption = new Option("m", "jobmanager", true,
+		"Address of the JobManager (master) to which to connect. " +
+			"Use this flag to connect to a different JobManager than the one specified in the configuration.");
 
-    @Override
-    public Configuration toConfiguration(CommandLine commandLine) throws FlinkException {
-        final Configuration resultingConfiguration = new Configuration();
-        resultingConfiguration.setString(DeploymentOptions.TARGET, RemoteExecutor.NAME);
+	protected final Configuration configuration;
 
-        if (commandLine.hasOption(zookeeperNamespaceOption.getOpt())) {
-            String zkNamespace = commandLine.getOptionValue(zookeeperNamespaceOption.getOpt());
-            resultingConfiguration.setString(HighAvailabilityOptions.HA_CLUSTER_ID, zkNamespace);
-        }
+	protected AbstractCustomCommandLine(Configuration configuration) {
+		this.configuration = new UnmodifiableConfiguration(Preconditions.checkNotNull(configuration));
+	}
 
-        return resultingConfiguration;
-    }
+	public Configuration getConfiguration() {
+		return configuration;
+	}
 
-    protected void printUsage() {
-        System.out.println("Usage:");
-        HelpFormatter formatter = new HelpFormatter();
-        formatter.setWidth(200);
-        formatter.setLeftPadding(5);
+	@Override
+	public void addRunOptions(Options baseOptions) {
+		// nothing to add here
+	}
 
-        formatter.setSyntaxPrefix("   Optional");
-        Options options = new Options();
-        addGeneralOptions(options);
-        addRunOptions(options);
-        formatter.printHelp(" ", options);
-    }
+	@Override
+	public void addGeneralOptions(Options baseOptions) {
+		baseOptions.addOption(addressOption);
+		baseOptions.addOption(zookeeperNamespaceOption);
+	}
 
-    public static int handleCliArgsException(CliArgsException e, Logger logger) {
-        logger.error("Could not parse the command line arguments.", e);
+	/**
+	 * Override configuration settings by specified command line options.
+	 *
+	 * @param commandLine containing the overriding values
+	 * @return Effective configuration with the overridden configuration settings
+	 */
+	protected Configuration applyCommandLineOptionsToConfiguration(CommandLine commandLine) throws FlinkException {
+		final Configuration resultingConfiguration = new Configuration(configuration);
 
-        System.out.println(e.getMessage());
-        System.out.println();
-        System.out.println("Use the help option (-h or --help) to get help on the command.");
-        return 1;
-    }
+		if (commandLine.hasOption(addressOption.getOpt())) {
+			String addressWithPort = commandLine.getOptionValue(addressOption.getOpt());
+			InetSocketAddress jobManagerAddress = NetUtils.parseHostPortAddress(addressWithPort);
+			setJobManagerAddressInConfig(resultingConfiguration, jobManagerAddress);
+		}
 
-    public static int handleError(Throwable t, Logger logger) {
-        logger.error("Error while running the Flink session.", t);
+		if (commandLine.hasOption(zookeeperNamespaceOption.getOpt())) {
+			String zkNamespace = commandLine.getOptionValue(zookeeperNamespaceOption.getOpt());
+			resultingConfiguration.setString(HighAvailabilityOptions.HA_CLUSTER_ID, zkNamespace);
+		}
 
-        System.err.println();
-        System.err.println("------------------------------------------------------------");
-        System.err.println(" The program finished with the following exception:");
-        System.err.println();
-
-        t.printStackTrace();
-        return 1;
-    }
+		return resultingConfiguration;
+	}
 }

@@ -27,7 +27,6 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.BufferedReader;
@@ -42,124 +41,122 @@ import static junit.framework.TestCase.assertNotNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.apache.flink.core.fs.FileSystemTestUtils.checkPathEventualExistence;
 
-/** Abstract integration test class for implementations of hadoop file system. */
+/**
+ * Abstract integration test class for implementations of hadoop file system.
+ */
 public abstract class AbstractHadoopFileSystemITTest extends TestLogger {
 
-    protected static FileSystem fs;
-    protected static Path basePath;
-    protected static long consistencyToleranceNS;
+	protected static FileSystem fs;
+	protected static Path basePath;
+	protected static long deadline;
 
-    public static void checkPathExistence(
-            Path path, boolean expectedExists, long consistencyToleranceNS)
-            throws IOException, InterruptedException {
-        if (consistencyToleranceNS == 0) {
-            // strongly consistency
-            assertEquals(expectedExists, fs.exists(path));
-        } else {
-            // eventually consistency
-            checkPathEventualExistence(fs, path, expectedExists, consistencyToleranceNS);
-        }
-    }
+	public static void checkPathExistence(Path path,
+			boolean expectedExists,
+			long deadline) throws IOException, InterruptedException {
+		if (deadline == 0) {
+			//strongly consistency
+			assertEquals(expectedExists, fs.exists(path));
+		} else {
+			//eventually consistency
+			checkPathEventualExistence(fs, path, expectedExists, deadline);
+		}
+	}
 
-    protected void checkEmptyDirectory(Path path) throws IOException, InterruptedException {
-        checkPathExistence(path, true, consistencyToleranceNS);
-    }
+	protected void checkEmptyDirectory(Path path) throws IOException, InterruptedException {
+		checkPathExistence(path, true, deadline);
+	}
 
-    @Test
-    public void testSimpleFileWriteAndRead() throws Exception {
-        final String testLine = "Hello Upload!";
+	@Test
+	public void testSimpleFileWriteAndRead() throws Exception {
+		final String testLine = "Hello Upload!";
 
-        final Path path = new Path(basePath, "test.txt");
+		final Path path = new Path(basePath, "test.txt");
 
-        try {
-            try (FSDataOutputStream out = fs.create(path, FileSystem.WriteMode.OVERWRITE);
-                    OutputStreamWriter writer =
-                            new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
-                writer.write(testLine);
-            }
+		try {
+			try (FSDataOutputStream out = fs.create(path, FileSystem.WriteMode.OVERWRITE);
+				OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+				writer.write(testLine);
+			}
 
-            // just in case, wait for the path to exist
-            checkPathExistence(path, true, consistencyToleranceNS);
+			// just in case, wait for the path to exist
+			checkPathExistence(path, true, deadline);
 
-            try (FSDataInputStream in = fs.open(path);
-                    InputStreamReader ir = new InputStreamReader(in, StandardCharsets.UTF_8);
-                    BufferedReader reader = new BufferedReader(ir)) {
-                String line = reader.readLine();
-                assertEquals(testLine, line);
-            }
-        } finally {
-            fs.delete(path, false);
-        }
+			try (FSDataInputStream in = fs.open(path);
+				InputStreamReader ir = new InputStreamReader(in, StandardCharsets.UTF_8);
+				BufferedReader reader = new BufferedReader(ir)) {
+				String line = reader.readLine();
+				assertEquals(testLine, line);
+			}
+		}
+		finally {
+			fs.delete(path, false);
+		}
 
-        checkPathExistence(path, false, consistencyToleranceNS);
-    }
+		checkPathExistence(path, false, deadline);
+	}
 
-    @Test
-    public void testDirectoryListing() throws Exception {
-        final Path directory = new Path(basePath, "testdir/");
+	@Test
+	public void testDirectoryListing() throws Exception {
+		final Path directory = new Path(basePath, "testdir/");
 
-        // directory must not yet exist
-        assertFalse(fs.exists(directory));
+		// directory must not yet exist
+		assertFalse(fs.exists(directory));
 
-        try {
-            // create directory
-            assertTrue(fs.mkdirs(directory));
+		try {
+			// create directory
+			assertTrue(fs.mkdirs(directory));
 
-            checkEmptyDirectory(directory);
+			checkEmptyDirectory(directory);
 
-            // directory empty
-            assertEquals(0, fs.listStatus(directory).length);
+			// directory empty
+			assertEquals(0, fs.listStatus(directory).length);
 
-            // create some files
-            final int numFiles = 3;
-            for (int i = 0; i < numFiles; i++) {
-                Path file = new Path(directory, "/file-" + i);
-                try (FSDataOutputStream out = fs.create(file, FileSystem.WriteMode.OVERWRITE);
-                        OutputStreamWriter writer =
-                                new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
-                    writer.write("hello-" + i + "\n");
-                }
-                // just in case, wait for the file to exist (should then also be reflected in the
-                // directory's file list below)
-                checkPathExistence(file, true, consistencyToleranceNS);
-            }
+			// create some files
+			final int numFiles = 3;
+			for (int i = 0; i < numFiles; i++) {
+				Path file = new Path(directory, "/file-" + i);
+				try (FSDataOutputStream out = fs.create(file, FileSystem.WriteMode.OVERWRITE);
+					OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+					writer.write("hello-" + i + "\n");
+				}
+				// just in case, wait for the file to exist (should then also be reflected in the
+				// directory's file list below)
+				checkPathExistence(file, true, deadline);
+			}
 
-            FileStatus[] files = fs.listStatus(directory);
-            assertNotNull(files);
-            assertEquals(3, files.length);
+			FileStatus[] files = fs.listStatus(directory);
+			assertNotNull(files);
+			assertEquals(3, files.length);
 
-            for (FileStatus status : files) {
-                assertFalse(status.isDir());
-            }
+			for (FileStatus status : files) {
+				assertFalse(status.isDir());
+			}
 
-            // now that there are files, the directory must exist
-            assertTrue(fs.exists(directory));
-        } finally {
-            // clean up
-            cleanupDirectoryWithRetry(fs, directory, consistencyToleranceNS);
-        }
-    }
+			// now that there are files, the directory must exist
+			assertTrue(fs.exists(directory));
+		}
+		finally {
+			// clean up
+			fs.delete(directory, true);
+		}
 
-    @AfterClass
-    public static void teardown() throws IOException, InterruptedException {
-        try {
-            if (fs != null) {
-                cleanupDirectoryWithRetry(fs, basePath, consistencyToleranceNS);
-            }
-        } finally {
-            FileSystem.initialize(new Configuration());
-        }
-    }
+		// now directory must be gone
+		checkPathExistence(directory, false, deadline);
+	}
 
-    public static void cleanupDirectoryWithRetry(
-            FileSystem fs, Path path, long consistencyToleranceNS)
-            throws IOException, InterruptedException {
-        fs.delete(path, true);
-        long deadline = System.nanoTime() + consistencyToleranceNS;
-        while (fs.exists(path) && System.nanoTime() - deadline < 0) {
-            fs.delete(path, true);
-            Thread.sleep(50L);
-        }
-        Assert.assertFalse(fs.exists(path));
-    }
+	@AfterClass
+	public static void teardown() throws IOException, InterruptedException {
+		try {
+			if (fs != null) {
+				// clean up
+				fs.delete(basePath, true);
+
+				// now directory must be gone
+				checkPathExistence(basePath, false, deadline);
+			}
+		}
+		finally {
+			FileSystem.initialize(new Configuration());
+		}
+	}
 }

@@ -23,25 +23,29 @@ import org.apache.flink.core.fs.FileSystemBehaviorTestSuite;
 import org.apache.flink.core.fs.FileSystemKind;
 import org.apache.flink.core.fs.Path;
 
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.Rule;
+import org.junit.rules.TemporaryFolder;
 
-/** Behavior tests for Flink's {@link LocalFileSystem}. */
-class LocalFileSystemBehaviorTest extends FileSystemBehaviorTestSuite {
+/**
+ * Behavior tests for Flink's {@link LocalFileSystem}.
+ */
+public class LocalFileSystemBehaviorTest extends FileSystemBehaviorTestSuite {
 
-    @TempDir private java.nio.file.Path tmp;
+	@Rule
+	public final TemporaryFolder tmp = new TemporaryFolder();
 
-    @Override
-    protected FileSystem getFileSystem() throws Exception {
-        return LocalFileSystem.getSharedInstance();
-    }
+	@Override
+	public FileSystem getFileSystem() throws Exception {
+		return LocalFileSystem.getSharedInstance();
+	}
 
-    @Override
-    protected Path getBasePath() throws Exception {
-        return new Path(tmp.toUri());
-    }
+	@Override
+	public Path getBasePath() throws Exception {
+		return new Path(tmp.newFolder().toURI());
+	}
 
-    @Override
-    protected FileSystemKind getFileSystemKind() {
-        return FileSystemKind.FILE_SYSTEM;
-    }
+	@Override
+	public FileSystemKind getFileSystemKind() {
+		return FileSystemKind.FILE_SYSTEM;
+	}
 }

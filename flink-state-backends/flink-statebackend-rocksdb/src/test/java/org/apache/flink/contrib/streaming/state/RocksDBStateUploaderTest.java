@@ -21,7 +21,7 @@ package org.apache.flink.contrib.streaming.state;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.runtime.state.CheckpointStateOutputStream;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointedStateScope;
 import org.apache.flink.runtime.state.StateHandleID;
@@ -41,9 +41,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -52,165 +51,137 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-/** Test class for {@link RocksDBStateUploader}. */
+/**
+ * Test class for {@link RocksDBStateUploader}.
+ */
 public class RocksDBStateUploaderTest extends TestLogger {
-    @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
-    /** Test that the exception arose in the thread pool will rethrow to the main thread. */
-    @Test
-    public void testMultiThreadUploadThreadPoolExceptionRethrow() throws IOException {
-        SpecifiedException expectedException =
-                new SpecifiedException("throw exception while multi thread upload states.");
+	@Rule
+	public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+	/**
+	 * Test that the exception arose in the thread pool will rethrow to the main thread.
+	 */
+	@Test
+	public void testMultiThreadUploadThreadPoolExceptionRethrow() throws IOException {
+		SpecifiedException expectedException = new SpecifiedException("throw exception while multi thread upload states.");
 
-        CheckpointStateOutputStream outputStream =
-                createFailingCheckpointStateOutputStream(expectedException);
-        CheckpointStreamFactory checkpointStreamFactory =
-                new CheckpointStreamFactory() {
-                    @Override
-                    public CheckpointStateOutputStream createCheckpointStateOutputStream(
-                            CheckpointedStateScope scope) throws IOException {
-                        return outputStream;
-                    }
+		CheckpointStreamFactory.CheckpointStateOutputStream outputStream = createFailingCheckpointStateOutputStream(expectedException);
+		CheckpointStreamFactory checkpointStreamFactory = (CheckpointedStateScope scope) -> outputStream;
 
-                    @Override
-                    public boolean canFastDuplicate(
-                            StreamStateHandle stateHandle, CheckpointedStateScope scope)
-                            throws IOException {
-                        return false;
-                    }
+		File file = temporaryFolder.newFile(String.valueOf(UUID.randomUUID()));
+		generateRandomFileContent(file.getPath(), 20);
 
-                    @Override
-                    public List<StreamStateHandle> duplicate(
-                            List<StreamStateHandle> stateHandles, CheckpointedStateScope scope)
-                            throws IOException {
-                        return null;
-                    }
-                };
+		Map<StateHandleID, Path> filePaths = new HashMap<>(1);
+		filePaths.put(new StateHandleID("mockHandleID"), new Path(file.getPath()));
+		try (RocksDBStateUploader rocksDBStateUploader = new RocksDBStateUploader(5)) {
+			rocksDBStateUploader.uploadFilesToCheckpointFs(filePaths, checkpointStreamFactory, new CloseableRegistry());
+			fail();
+		} catch (Exception e) {
+			assertEquals(expectedException, e);
+		}
+	}
 
-        File file = temporaryFolder.newFile(String.valueOf(UUID.randomUUID()));
-        generateRandomFileContent(file.getPath(), 20);
+	/**
+	 * Test that upload files with multi-thread correctly.
+	 */
+	@Test
+	public void testMultiThreadUploadCorrectly() throws Exception {
+		File checkpointPrivateFolder = temporaryFolder.newFolder("private");
+		Path checkpointPrivateDirectory = new Path(checkpointPrivateFolder.getPath());
 
-        Map<StateHandleID, Path> filePaths = new HashMap<>(1);
-        filePaths.put(new StateHandleID("mockHandleID"), file.toPath());
-        try (RocksDBStateUploader rocksDBStateUploader = new RocksDBStateUploader(5)) {
-            rocksDBStateUploader.uploadFilesToCheckpointFs(
-                    filePaths,
-                    checkpointStreamFactory,
-                    CheckpointedStateScope.SHARED,
-                    new CloseableRegistry());
-            fail();
-        } catch (Exception e) {
-            assertEquals(expectedException, e);
-        }
-    }
+		File checkpointSharedFolder = temporaryFolder.newFolder("shared");
+		Path checkpointSharedDirectory = new Path(checkpointSharedFolder.getPath());
 
-    /** Test that upload files with multi-thread correctly. */
-    @Test
-    public void testMultiThreadUploadCorrectly() throws Exception {
-        File checkpointPrivateFolder = temporaryFolder.newFolder("private");
-        org.apache.flink.core.fs.Path checkpointPrivateDirectory =
-                org.apache.flink.core.fs.Path.fromLocalFile(checkpointPrivateFolder);
+		FileSystem fileSystem = checkpointPrivateDirectory.getFileSystem();
+		int fileStateSizeThreshold = 1024;
+		int writeBufferSize = 4096;
+		FsCheckpointStreamFactory checkpointStreamFactory =
+			new FsCheckpointStreamFactory(
+				fileSystem, checkpointPrivateDirectory, checkpointSharedDirectory, fileStateSizeThreshold, writeBufferSize);
 
-        File checkpointSharedFolder = temporaryFolder.newFolder("shared");
-        org.apache.flink.core.fs.Path checkpointSharedDirectory =
-                org.apache.flink.core.fs.Path.fromLocalFile(checkpointSharedFolder);
+		String localFolder = "local";
+		temporaryFolder.newFolder(localFolder);
 
-        FileSystem fileSystem = checkpointPrivateDirectory.getFileSystem();
-        int fileStateSizeThreshold = 1024;
-        int writeBufferSize = 4096;
-        FsCheckpointStreamFactory checkpointStreamFactory =
-                new FsCheckpointStreamFactory(
-                        fileSystem,
-                        checkpointPrivateDirectory,
-                        checkpointSharedDirectory,
-                        fileStateSizeThreshold,
-                        writeBufferSize);
+		int sstFileCount = 6;
+		Map<StateHandleID, Path> sstFilePaths = generateRandomSstFiles(localFolder, sstFileCount, fileStateSizeThreshold);
 
-        String localFolder = "local";
-        temporaryFolder.newFolder(localFolder);
+		try (RocksDBStateUploader rocksDBStateUploader = new RocksDBStateUploader(5)) {
+			Map<StateHandleID, StreamStateHandle> sstFiles =
+				rocksDBStateUploader.uploadFilesToCheckpointFs(sstFilePaths, checkpointStreamFactory, new CloseableRegistry());
 
-        int sstFileCount = 6;
-        Map<StateHandleID, Path> sstFilePaths =
-                generateRandomSstFiles(localFolder, sstFileCount, fileStateSizeThreshold);
+			for (Map.Entry<StateHandleID, Path> entry : sstFilePaths.entrySet()) {
+				assertStateContentEqual(entry.getValue(), sstFiles.get(entry.getKey()).openInputStream());
+			}
+		}
+	}
 
-        try (RocksDBStateUploader rocksDBStateUploader = new RocksDBStateUploader(5)) {
-            Map<StateHandleID, StreamStateHandle> sstFiles =
-                    rocksDBStateUploader.uploadFilesToCheckpointFs(
-                            sstFilePaths,
-                            checkpointStreamFactory,
-                            CheckpointedStateScope.SHARED,
-                            new CloseableRegistry());
+	private CheckpointStreamFactory.CheckpointStateOutputStream createFailingCheckpointStateOutputStream(
+		IOException failureException) {
+		return new CheckpointStreamFactory.CheckpointStateOutputStream() {
+			@Nullable
+			@Override
+			public StreamStateHandle closeAndGetHandle() {
+				return new ByteStreamStateHandle("testHandle", "testHandle".getBytes());
+			}
 
-            for (Map.Entry<StateHandleID, Path> entry : sstFilePaths.entrySet()) {
-                assertStateContentEqual(
-                        entry.getValue(), sstFiles.get(entry.getKey()).openInputStream());
-            }
-        }
-    }
+			@Override
+			public void close() {
+			}
 
-    private CheckpointStateOutputStream createFailingCheckpointStateOutputStream(
-            IOException failureException) {
-        return new CheckpointStateOutputStream() {
-            @Nullable
-            @Override
-            public StreamStateHandle closeAndGetHandle() {
-                return new ByteStreamStateHandle("testHandle", "testHandle".getBytes());
-            }
+			@Override
+			public long getPos() {
+				return 0;
+			}
 
-            @Override
-            public void close() {}
+			@Override
+			public void flush() {
+			}
 
-            @Override
-            public long getPos() {
-                return 0;
-            }
+			@Override
+			public void sync() {
+			}
 
-            @Override
-            public void flush() {}
+			@Override
+			public void write(int b) throws IOException {
+				throw failureException;
+			}
+		};
+	}
 
-            @Override
-            public void sync() {}
+	private Map<StateHandleID, Path> generateRandomSstFiles(
+		String localFolder,
+		int sstFileCount,
+		int fileStateSizeThreshold) throws IOException {
+		ThreadLocalRandom random = ThreadLocalRandom.current();
 
-            @Override
-            public void write(int b) throws IOException {
-                throw failureException;
-            }
-        };
-    }
+		Map<StateHandleID, Path> sstFilePaths = new HashMap<>(sstFileCount);
+		for (int i = 0; i < sstFileCount; ++i) {
+			File file = temporaryFolder.newFile(String.format("%s/%d.sst", localFolder, i));
+			generateRandomFileContent(file.getPath(), random.nextInt(1_000_000) + fileStateSizeThreshold);
+			sstFilePaths.put(new StateHandleID(String.valueOf(i)), Path.fromLocalFile(file));
+		}
+		return sstFilePaths;
+	}
 
-    private Map<StateHandleID, Path> generateRandomSstFiles(
-            String localFolder, int sstFileCount, int fileStateSizeThreshold) throws IOException {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
+	private void generateRandomFileContent(String filePath, int fileLength) throws IOException {
+		FileOutputStream fileStream = new FileOutputStream(filePath);
+		byte[] contents = new byte[fileLength];
+		ThreadLocalRandom.current().nextBytes(contents);
+		fileStream.write(contents);
+		fileStream.close();
+	}
 
-        Map<StateHandleID, Path> sstFilePaths = new HashMap<>(sstFileCount);
-        for (int i = 0; i < sstFileCount; ++i) {
-            File file = temporaryFolder.newFile(String.format("%s/%d.sst", localFolder, i));
-            generateRandomFileContent(
-                    file.getPath(), random.nextInt(1_000_000) + fileStateSizeThreshold);
-            sstFilePaths.put(new StateHandleID(String.valueOf(i)), file.toPath());
-        }
-        return sstFilePaths;
-    }
+	private void assertStateContentEqual(Path stateFilePath, FSDataInputStream inputStream) throws IOException {
+		byte[] excepted = Files.readAllBytes(Paths.get(stateFilePath.toUri()));
+		byte[] actual = new byte[excepted.length];
+		IOUtils.readFully(inputStream, actual, 0, actual.length);
+		assertEquals(-1, inputStream.read());
+		assertArrayEquals(excepted, actual);
+	}
 
-    private void generateRandomFileContent(String filePath, int fileLength) throws IOException {
-        FileOutputStream fileStream = new FileOutputStream(filePath);
-        byte[] contents = new byte[fileLength];
-        ThreadLocalRandom.current().nextBytes(contents);
-        fileStream.write(contents);
-        fileStream.close();
-    }
-
-    private void assertStateContentEqual(Path stateFilePath, FSDataInputStream inputStream)
-            throws IOException {
-        byte[] excepted = Files.readAllBytes(stateFilePath);
-        byte[] actual = new byte[excepted.length];
-        IOUtils.readFully(inputStream, actual, 0, actual.length);
-        assertEquals(-1, inputStream.read());
-        assertArrayEquals(excepted, actual);
-    }
-
-    private static class SpecifiedException extends IOException {
-        SpecifiedException(String message) {
-            super(message);
-        }
-    }
+	private static class SpecifiedException extends IOException {
+		SpecifiedException(String message) {
+			super(message);
+		}
+	}
 }
+

@@ -18,19 +18,15 @@
 
 package org.apache.flink.sql.tests;
 
-import org.apache.flink.api.common.BatchShuffleMode;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.io.IteratorInputFormat;
 import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
-import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.internal.TableEnvironmentInternal;
 import org.apache.flink.table.sinks.CsvTableSink;
 import org.apache.flink.table.sources.InputFormatTableSource;
 import org.apache.flink.table.types.DataType;
@@ -48,141 +44,117 @@ import java.util.NoSuchElementException;
  *
  * <p>The sources are generated and bounded. The result is always constant.
  *
- * <p>Parameters: -outputPath output file path for CsvTableSink; -sqlStatement SQL statement that
- * will be executed as executeSql
+ * <p>Parameters:
+ * -outputPath output file path for CsvTableSink;
+ * -sqlStatement SQL statement that will be executed as sqlUpdate
  */
 public class BatchSQLTestProgram {
 
-    public static void main(String[] args) throws Exception {
-        ParameterTool params = ParameterTool.fromArgs(args);
-        String outputPath = params.getRequired("outputPath");
-        String sqlStatement = params.getRequired("sqlStatement");
-        String shuffleType = params.getRequired("shuffleType");
-        TableEnvironment tEnv = TableEnvironment.create(EnvironmentSettings.inBatchMode());
-        BatchShuffleMode shuffleMode = checkAndGetShuffleMode(shuffleType);
-        tEnv.getConfig().set(ExecutionOptions.BATCH_SHUFFLE_MODE, shuffleMode);
-        ((TableEnvironmentInternal) tEnv)
-                .registerTableSourceInternal("table1", new GeneratorTableSource(10, 100, 60, 0));
-        ((TableEnvironmentInternal) tEnv)
-                .registerTableSourceInternal("table2", new GeneratorTableSource(5, 0.2f, 60, 5));
-        ((TableEnvironmentInternal) tEnv)
-                .registerTableSinkInternal(
-                        "sinkTable",
-                        new CsvTableSink(outputPath)
-                                .configure(
-                                        new String[] {"f0", "f1"},
-                                        new TypeInformation[] {Types.INT, Types.SQL_TIMESTAMP}));
+	public static void main(String[] args) throws Exception {
+		ParameterTool params = ParameterTool.fromArgs(args);
+		String outputPath = params.getRequired("outputPath");
+		String sqlStatement = params.getRequired("sqlStatement");
 
-        TableResult result = tEnv.executeSql(sqlStatement);
-        // wait job finish
-        result.getJobClient().get().getJobExecutionResult().get();
-    }
+		TableEnvironment tEnv = TableEnvironment.create(EnvironmentSettings.newInstance()
+			.useBlinkPlanner()
+			.inBatchMode()
+			.build());
 
-    private static BatchShuffleMode checkAndGetShuffleMode(String shuffleType) {
-        BatchShuffleMode shuffleMode;
-        switch (shuffleType.toLowerCase()) {
-            case "blocking":
-                shuffleMode = BatchShuffleMode.ALL_EXCHANGES_BLOCKING;
-                break;
-            case "hybrid_full":
-                shuffleMode = BatchShuffleMode.ALL_EXCHANGES_HYBRID_FULL;
-                break;
-            case "hybrid_selective":
-                shuffleMode = BatchShuffleMode.ALL_EXCHANGES_HYBRID_SELECTIVE;
-                break;
-            default:
-                throw new IllegalArgumentException("unsupported shuffle type : " + shuffleType);
-        }
-        return shuffleMode;
-    }
+		tEnv.registerTableSource("table1", new GeneratorTableSource(10, 100, 60, 0));
+		tEnv.registerTableSource("table2", new GeneratorTableSource(5, 0.2f, 60, 5));
+		tEnv.registerTableSink("sinkTable",
+			new CsvTableSink(outputPath)
+				.configure(new String[]{"f0", "f1"}, new TypeInformation[]{Types.INT, Types.SQL_TIMESTAMP}));
 
-    /** TableSource for generated data. */
-    public static class GeneratorTableSource extends InputFormatTableSource<Row> {
+		tEnv.sqlUpdate(sqlStatement);
+		tEnv.execute("TestSqlJob");
+	}
 
-        private final int numKeys;
-        private final float recordsPerKeyAndSecond;
-        private final int durationSeconds;
-        private final int offsetSeconds;
+	/**
+	 * TableSource for generated data.
+	 */
+	public static class GeneratorTableSource extends InputFormatTableSource<Row> {
 
-        GeneratorTableSource(
-                int numKeys, float recordsPerKeyAndSecond, int durationSeconds, int offsetSeconds) {
-            this.numKeys = numKeys;
-            this.recordsPerKeyAndSecond = recordsPerKeyAndSecond;
-            this.durationSeconds = durationSeconds;
-            this.offsetSeconds = offsetSeconds;
-        }
+		private final int numKeys;
+		private final float recordsPerKeyAndSecond;
+		private final int durationSeconds;
+		private final int offsetSeconds;
 
-        @Override
-        public InputFormat<Row, ?> getInputFormat() {
-            return new IteratorInputFormat<>(
-                    DataGenerator.create(
-                            numKeys, recordsPerKeyAndSecond, durationSeconds, offsetSeconds));
-        }
+		GeneratorTableSource(int numKeys, float recordsPerKeyAndSecond, int durationSeconds, int offsetSeconds) {
+			this.numKeys = numKeys;
+			this.recordsPerKeyAndSecond = recordsPerKeyAndSecond;
+			this.durationSeconds = durationSeconds;
+			this.offsetSeconds = offsetSeconds;
+		}
 
-        @Override
-        public DataType getProducedDataType() {
-            return getTableSchema().toRowDataType();
-        }
+		@Override
+		public InputFormat<Row, ?> getInputFormat() {
+			return new IteratorInputFormat<>(
+				DataGenerator.create(numKeys, recordsPerKeyAndSecond, durationSeconds, offsetSeconds));
+		}
 
-        @Override
-        public TableSchema getTableSchema() {
-            return TableSchema.builder()
-                    .field("key", DataTypes.INT())
-                    .field("rowtime", DataTypes.TIMESTAMP(3))
-                    .field("payload", DataTypes.STRING())
-                    .build();
-        }
-    }
+		@Override
+		public DataType getProducedDataType() {
+			return getTableSchema().toRowDataType();
+		}
 
-    /** Iterator for generated data. */
-    public static class DataGenerator implements Iterator<Row>, Serializable {
-        private static final long serialVersionUID = 1L;
+		@Override
+		public TableSchema getTableSchema() {
+			return TableSchema.builder()
+				.field("key", DataTypes.INT())
+				.field("rowtime", DataTypes.TIMESTAMP(3))
+				.field("payload", DataTypes.STRING())
+				.build();
+		}
+	}
 
-        final int numKeys;
+	/**
+	 * Iterator for generated data.
+	 */
+	public static class DataGenerator implements Iterator<Row>, Serializable {
+		private static final long serialVersionUID = 1L;
 
-        private int keyIndex = 0;
+		final int numKeys;
 
-        private final long durationMs;
-        private final long stepMs;
-        private final long offsetMs;
-        private long ms = 0;
+		private int keyIndex = 0;
 
-        static DataGenerator create(
-                int numKeys, float rowsPerKeyAndSecond, int durationSeconds, int offsetSeconds) {
-            int sleepMs = (int) (1000 / rowsPerKeyAndSecond);
-            return new DataGenerator(
-                    numKeys, durationSeconds * 1000, sleepMs, offsetSeconds * 2000L);
-        }
+		private final long durationMs;
+		private final long stepMs;
+		private final long offsetMs;
+		private long ms = 0;
 
-        DataGenerator(int numKeys, long durationMs, long stepMs, long offsetMs) {
-            this.numKeys = numKeys;
-            this.durationMs = durationMs;
-            this.stepMs = stepMs;
-            this.offsetMs = offsetMs;
-        }
+		static DataGenerator create(int numKeys, float rowsPerKeyAndSecond, int durationSeconds, int offsetSeconds) {
+			int sleepMs = (int) (1000 / rowsPerKeyAndSecond);
+			return new DataGenerator(numKeys, durationSeconds * 1000, sleepMs, offsetSeconds * 2000L);
+		}
 
-        @Override
-        public boolean hasNext() {
-            return ms < durationMs;
-        }
+		DataGenerator(int numKeys, long durationMs, long stepMs, long offsetMs) {
+			this.numKeys = numKeys;
+			this.durationMs = durationMs;
+			this.stepMs = stepMs;
+			this.offsetMs = offsetMs;
+		}
 
-        @Override
-        public Row next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-            Row row =
-                    Row.of(
-                            keyIndex,
-                            LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(ms + offsetMs), ZoneOffset.UTC),
-                            "Some payload...");
-            ++keyIndex;
-            if (keyIndex >= numKeys) {
-                keyIndex = 0;
-                ms += stepMs;
-            }
-            return row;
-        }
-    }
+		@Override
+		public boolean hasNext() {
+			return ms < durationMs;
+		}
+
+		@Override
+		public Row next() {
+			if (!hasNext()) {
+				throw new NoSuchElementException();
+			}
+			Row row = Row.of(
+				keyIndex,
+				LocalDateTime.ofInstant(Instant.ofEpochMilli(ms + offsetMs), ZoneOffset.UTC),
+				"Some payload...");
+			++keyIndex;
+			if (keyIndex >= numKeys) {
+				keyIndex = 0;
+				ms += stepMs;
+			}
+			return row;
+		}
+	}
 }

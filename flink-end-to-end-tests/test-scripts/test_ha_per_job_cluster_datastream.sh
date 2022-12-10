@@ -23,14 +23,11 @@ source "$(dirname "$0")"/common_ha.sh
 TEST_PROGRAM_JAR_NAME=DataStreamAllroundTestProgram.jar
 TEST_PROGRAM_JAR=${END_TO_END_DIR}/flink-datastream-allround-test/target/${TEST_PROGRAM_JAR_NAME}
 FLINK_LIB_DIR=${FLINK_DIR}/lib
-
-#
-# NOTE: This script requires at least Bash version >= 4. Mac OS in 2020 still ships 3.x
-#
+JOB_ID="00000000000000000000000000000000"
 
 function ha_cleanup() {
   stop_watchdogs
-  kill_all 'StandaloneApplicationClusterEntryPoint'
+  kill_all 'StandaloneJobClusterEntryPoint'
 }
 
 on_exit ha_cleanup
@@ -98,7 +95,7 @@ function run_ha_test() {
     local ASYNC=$3
     local INCREM=$4
 
-    local JM_KILLS=2
+    local JM_KILLS=3
 
     CLEARED=0
 
@@ -114,7 +111,7 @@ function run_ha_test() {
 
     start_local_zk
 
-    echo "Running on HA mode: parallelism=${PARALLELISM}, backend=${BACKEND}, asyncSnapshots=${ASYNC}, incremSnapshots=${INCREM}."
+    echo "Running on HA mode: parallelism=${PARALLELISM}, backend=${BACKEND}, asyncSnapshots=${ASYNC}, and incremSnapshots=${INCREM}."
 
     # submit a job in detached mode and let it run
     run_job ${PARALLELISM} ${BACKEND} ${ASYNC} ${INCREM}
@@ -123,12 +120,10 @@ function run_ha_test() {
     local neededTaskmanagers=$(( (${PARALLELISM} + ${TASK_SLOTS_PER_TM_HA} - 1)  / ${TASK_SLOTS_PER_TM_HA} ))
     start_taskmanagers ${neededTaskmanagers}
 
-    wait_num_of_occurence_in_logs "Job [a-z0-9]+ is submitted." 1 "standalonejob"
-    JOB_ID=$(grep -E -o 'Job [a-z0-9]+ is submitted' $FLINK_LOG_DIR/*standalonejob*.log* | awk '{print $2}')
     wait_job_running ${JOB_ID}
 
     # start the watchdog that keeps the number of JMs stable
-    start_ha_jm_watchdog 1 "StandaloneApplicationClusterEntryPoint" run_job ${PARALLELISM} ${BACKEND} ${ASYNC} ${INCREM}
+    start_ha_jm_watchdog 1 "StandaloneJobClusterEntryPoint" run_job ${PARALLELISM} ${BACKEND} ${ASYNC} ${INCREM}
 
     # start the watchdog that keeps the number of TMs stable
     start_ha_tm_watchdog ${JOB_ID} ${neededTaskmanagers}
@@ -139,7 +134,7 @@ function run_ha_test() {
     for (( c=1; c<=${JM_KILLS}; c++ )); do
         # kill the JM and wait for watchdog to
         # create a new one which will take over
-        kill_single 'StandaloneApplicationClusterEntryPoint'
+        kill_single 'StandaloneJobClusterEntryPoint'
         # let the job start and take some checkpoints
         wait_num_of_occurence_in_logs "Completed checkpoint [1-9]* for job ${JOB_ID}" 2 "standalonejob-${c}"
     done
@@ -153,4 +148,4 @@ STATE_BACKEND_TYPE=${1:-file}
 STATE_BACKEND_FILE_ASYNC=${2:-true}
 STATE_BACKEND_ROCKS_INCREMENTAL=${3:-false}
 
-run_test_with_timeout 900 run_ha_test 4 ${STATE_BACKEND_TYPE} ${STATE_BACKEND_FILE_ASYNC} ${STATE_BACKEND_ROCKS_INCREMENTAL}
+run_ha_test 4 ${STATE_BACKEND_TYPE} ${STATE_BACKEND_FILE_ASYNC} ${STATE_BACKEND_ROCKS_INCREMENTAL}

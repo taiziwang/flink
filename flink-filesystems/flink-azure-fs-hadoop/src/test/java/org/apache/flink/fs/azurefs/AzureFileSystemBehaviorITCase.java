@@ -31,9 +31,12 @@ import org.apache.flink.util.StringUtils;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.azure.credentials.AzureTokenCredentials;
 import com.microsoft.azure.management.Azure;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.junit.AfterClass;
+import org.junit.Assume;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,196 +44,177 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.apache.flink.core.fs.FileSystemTestUtils.checkPathEventualExistence;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assumptions.assumeThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
-/** An implementation of the {@link FileSystemBehaviorTestSuite} for Azure based file system. */
-class AzureFileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
+/**
+ * An implementation of the {@link FileSystemBehaviorTestSuite} for Azure based
+ * file system.
+ */
+@RunWith(Parameterized.class)
+public class AzureFileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
 
-    private static final String CONTAINER = System.getenv("ARTIFACTS_AZURE_CONTAINER");
-    private static final String ACCOUNT = System.getenv("ARTIFACTS_AZURE_STORAGE_ACCOUNT");
-    private static final String ACCESS_KEY = System.getenv("ARTIFACTS_AZURE_ACCESS_KEY");
-    private static final String RESOURCE_GROUP = System.getenv("ARTIFACTS_AZURE_RESOURCE_GROUP");
-    private static final String SUBSCRIPTION_ID = System.getenv("ARTIFACTS_AZURE_SUBSCRIPTION_ID");
-    private static final String TOKEN_CREDENTIALS_FILE =
-            System.getenv("ARTIFACTS_AZURE_TOKEN_CREDENTIALS_FILE");
+	@Parameterized.Parameter
+	public String scheme;
 
-    private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
+	private static final String CONTAINER = System.getenv("ARTIFACTS_AZURE_CONTAINER");
+	private static final String ACCOUNT = System.getenv("ARTIFACTS_AZURE_STORAGE_ACCOUNT");
+	private static final String ACCESS_KEY = System.getenv("ARTIFACTS_AZURE_ACCESS_KEY");
+	private static final String RESOURCE_GROUP = System.getenv("ARTIFACTS_AZURE_RESOURCE_GROUP");
+	private static final String SUBSCRIPTION_ID = System.getenv("ARTIFACTS_AZURE_SUBSCRIPTION_ID");
+	private static final String TOKEN_CREDENTIALS_FILE = System.getenv("ARTIFACTS_AZURE_TOKEN_CREDENTIALS_FILE");
 
-    /**
-     * Azure Blob Storage defaults to https only storage accounts, tested in the base class.
-     *
-     * <p>This nested class repeats the tests with http support, but only if a best effort check on
-     * https support succeeds.
-     */
-    static class HttpSupportAzureFileSystemBehaviorITCase extends AzureFileSystemBehaviorITCase {
-        @BeforeAll
-        static void onlyRunIfHttps() throws IOException {
-            // default to https only, as some fields are missing
-            assumeThat(RESOURCE_GROUP)
-                    .describedAs("Azure resource group not configured, skipping test...")
-                    .isNotBlank();
-            assumeThat(TOKEN_CREDENTIALS_FILE)
-                    .describedAs("Azure token credentials not configured, skipping test...")
-                    .isNotBlank();
-            assumeThat(isHttpsTrafficOnly()).isFalse();
-        }
+	private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
 
-        @Override
-        protected Path getBasePath() {
-            // wasb://yourcontainer@youraccount.blob.core.windows.net/testDataDir
-            String uriString =
-                    "wasb://"
-                            + CONTAINER
-                            + '@'
-                            + ACCOUNT
-                            + ".blob.core.windows.net/"
-                            + TEST_DATA_DIR;
-            return new Path(uriString);
-        }
-    }
+	// Azure Blob Storage defaults to https only storage accounts. We check if http support has been
+	// enabled on a best effort basis and test http if so.
+	@Parameterized.Parameters(name = "Scheme = {0}")
+	public static List<String> parameters() throws IOException {
+		boolean httpsOnly = isHttpsTrafficOnly();
+		return httpsOnly ? Arrays.asList("wasbs") : Arrays.asList("wasb", "wasbs");
+	}
 
-    private static boolean isHttpsTrafficOnly() throws IOException {
-        AzureTokenCredentials credentials =
-                ApplicationTokenCredentials.fromFile(new File(TOKEN_CREDENTIALS_FILE));
-        Azure azure =
-                StringUtils.isNullOrWhitespaceOnly(SUBSCRIPTION_ID)
-                        ? Azure.authenticate(credentials).withDefaultSubscription()
-                        : Azure.authenticate(credentials).withSubscription(SUBSCRIPTION_ID);
+	private static boolean isHttpsTrafficOnly() throws IOException {
+		if (StringUtils.isNullOrWhitespaceOnly(RESOURCE_GROUP) || StringUtils.isNullOrWhitespaceOnly(TOKEN_CREDENTIALS_FILE)) {
+			// default to https only, as some fields are missing
+			return true;
+		}
 
-        return azure.storageAccounts()
-                .getByResourceGroup(RESOURCE_GROUP, ACCOUNT)
-                .inner()
-                .enableHttpsTrafficOnly();
-    }
+		Assume.assumeTrue("Azure storage account not configured, skipping test...", !StringUtils.isNullOrWhitespaceOnly(ACCOUNT));
 
-    @BeforeAll
-    static void checkCredentialsAndSetup() {
-        // check whether credentials and container details exist
-        assumeThat(ACCOUNT)
-                .describedAs("Azure storage account not configured, skipping test...")
-                .isNotBlank();
-        assumeThat(CONTAINER)
-                .describedAs("Azure container not configured, skipping test...")
-                .isNotBlank();
-        assumeThat(ACCESS_KEY)
-                .describedAs("Azure access key not configured, skipping test...")
-                .isNotBlank();
+		AzureTokenCredentials credentials = ApplicationTokenCredentials.fromFile(new File(TOKEN_CREDENTIALS_FILE));
+		Azure azure =
+			StringUtils.isNullOrWhitespaceOnly(SUBSCRIPTION_ID) ?
+				Azure.authenticate(credentials).withDefaultSubscription() :
+				Azure.authenticate(credentials).withSubscription(SUBSCRIPTION_ID);
 
-        // initialize configuration with valid credentials
-        final Configuration conf = new Configuration();
-        // fs.azure.account.key.youraccount.blob.core.windows.net = ACCESS_KEY
-        conf.setString("fs.azure.account.key." + ACCOUNT + ".blob.core.windows.net", ACCESS_KEY);
-        FileSystem.initialize(conf, null);
-    }
+		return azure.storageAccounts().getByResourceGroup(RESOURCE_GROUP, ACCOUNT).inner().enableHttpsTrafficOnly();
+	}
 
-    @AfterAll
-    static void clearFsConfig() {
-        FileSystem.initialize(new Configuration(), null);
-    }
+	@BeforeClass
+	public static void checkCredentialsAndSetup() throws IOException {
+		// check whether credentials and container details exist
+		Assume.assumeTrue("Azure container not configured, skipping test...", !StringUtils.isNullOrWhitespaceOnly(CONTAINER));
+		Assume.assumeTrue("Azure access key not configured, skipping test...", !StringUtils.isNullOrWhitespaceOnly(ACCESS_KEY));
 
-    @Override
-    protected FileSystem getFileSystem() throws Exception {
-        return getBasePath().getFileSystem();
-    }
+		// initialize configuration with valid credentials
+		final Configuration conf = new Configuration();
+		// fs.azure.account.key.youraccount.blob.core.windows.net = ACCESS_KEY
+		conf.setString("fs.azure.account.key." + ACCOUNT + ".blob.core.windows.net", ACCESS_KEY);
+		FileSystem.initialize(conf);
+	}
 
-    @Override
-    protected Path getBasePath() {
-        // wasbs://yourcontainer@youraccount.blob.core.windows.net/testDataDir
-        String uriString =
-                "wasbs://" + CONTAINER + '@' + ACCOUNT + ".blob.core.windows.net/" + TEST_DATA_DIR;
-        return new Path(uriString);
-    }
+	@AfterClass
+	public static void clearFsConfig() throws IOException {
+		FileSystem.initialize(new Configuration());
+	}
 
-    @Override
-    protected FileSystemKind getFileSystemKind() {
-        return FileSystemKind.OBJECT_STORE;
-    }
+	@Override
+	public FileSystem getFileSystem() throws Exception {
+		return getBasePath().getFileSystem();
+	}
 
-    @Test
-    void testSimpleFileWriteAndRead() throws Exception {
-        final long deadline = System.nanoTime() + 30_000_000_000L; // 30 secs
+	@Override
+	public Path getBasePath() {
+		// wasb(s)://yourcontainer@youraccount.blob.core.windows.net/testDataDir
+		String uriString = scheme + "://" + CONTAINER + '@' + ACCOUNT + ".blob.core.windows.net/" + TEST_DATA_DIR;
+		return new Path(uriString);
+	}
 
-        final String testLine = "Hello Upload!";
+	@Test
+	public void testSimpleFileWriteAndRead() throws Exception {
+		final long deadline = System.nanoTime() + 30_000_000_000L; // 30 secs
 
-        final Path path = new Path(getBasePath() + "/test.txt");
-        final FileSystem fs = path.getFileSystem();
+		final String testLine = "Hello Upload!";
 
-        try {
-            try (FSDataOutputStream out = fs.create(path, FileSystem.WriteMode.OVERWRITE);
-                    OutputStreamWriter writer =
-                            new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
-                writer.write(testLine);
-            }
+		final Path path = new Path(getBasePath() + "/test.txt");
+		final FileSystem fs = path.getFileSystem();
 
-            // just in case, wait for the path to exist
-            checkPathEventualExistence(fs, path, true, deadline);
+		try {
+			try (FSDataOutputStream out = fs.create(path, FileSystem.WriteMode.OVERWRITE);
+				OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+				writer.write(testLine);
+			}
 
-            try (FSDataInputStream in = fs.open(path);
-                    InputStreamReader ir = new InputStreamReader(in, StandardCharsets.UTF_8);
-                    BufferedReader reader = new BufferedReader(ir)) {
-                String line = reader.readLine();
-                assertThat(line).isEqualTo(testLine);
-            }
-        } finally {
-            fs.delete(path, false);
-        }
+			// just in case, wait for the path to exist
+			checkPathEventualExistence(fs, path, true, deadline);
 
-        // now file must be gone
-        checkPathEventualExistence(fs, path, false, deadline);
-    }
+			try (FSDataInputStream in = fs.open(path);
+				InputStreamReader ir = new InputStreamReader(in, StandardCharsets.UTF_8);
+				BufferedReader reader = new BufferedReader(ir)) {
+				String line = reader.readLine();
+				assertEquals(testLine, line);
+			}
+		}
+		finally {
+			fs.delete(path, false);
+		}
 
-    @Test
-    void testDirectoryListing() throws Exception {
-        final long deadline = System.nanoTime() + 30_000_000_000L; // 30 secs
+		// now file must be gone
+		checkPathEventualExistence(fs, path, false, deadline);
+	}
 
-        final Path directory = new Path(getBasePath() + "/testdir/");
-        final FileSystem fs = directory.getFileSystem();
+	@Test
+	public void testDirectoryListing() throws Exception {
+		final long deadline = System.nanoTime() + 30_000_000_000L; // 30 secs
 
-        // directory must not yet exist
-        assertThat(fs.exists(directory)).isFalse();
+		final Path directory = new Path(getBasePath() + "/testdir/");
+		final FileSystem fs = directory.getFileSystem();
 
-        try {
-            // create directory
-            assertThat(fs.mkdirs(directory)).isTrue();
+		// directory must not yet exist
+		assertFalse(fs.exists(directory));
 
-            checkPathEventualExistence(fs, directory, true, deadline);
+		try {
+			// create directory
+			assertTrue(fs.mkdirs(directory));
 
-            // directory empty
-            assertThat(fs.listStatus(directory)).isEmpty();
+			checkPathEventualExistence(fs, directory, true, deadline);
 
-            // create some files
-            final int numFiles = 3;
-            for (int i = 0; i < numFiles; i++) {
-                Path file = new Path(directory, "/file-" + i);
-                try (FSDataOutputStream out = fs.create(file, FileSystem.WriteMode.OVERWRITE);
-                        OutputStreamWriter writer =
-                                new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
-                    writer.write("hello-" + i + "\n");
-                }
-                // just in case, wait for the file to exist (should then also be reflected in the
-                // directory's file list below)
-                checkPathEventualExistence(fs, file, true, deadline);
-            }
+			// directory empty
+			assertEquals(0, fs.listStatus(directory).length);
 
-            FileStatus[] files = fs.listStatus(directory);
-            assertThat(files).hasSize(3);
+			// create some files
+			final int numFiles = 3;
+			for (int i = 0; i < numFiles; i++) {
+				Path file = new Path(directory, "/file-" + i);
+				try (FSDataOutputStream out = fs.create(file, FileSystem.WriteMode.OVERWRITE);
+					OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+					writer.write("hello-" + i + "\n");
+				}
+				// just in case, wait for the file to exist (should then also be reflected in the
+				// directory's file list below)
+				checkPathEventualExistence(fs, file, true, deadline);
+			}
 
-            for (FileStatus status : files) {
-                assertThat(status.isDir()).isFalse();
-            }
+			FileStatus[] files = fs.listStatus(directory);
+			assertNotNull(files);
+			assertEquals(3, files.length);
 
-            // now that there are files, the directory must exist
-            assertThat(fs.exists(directory)).isTrue();
-        } finally {
-            // clean up
-            fs.delete(directory, true);
-        }
+			for (FileStatus status : files) {
+				assertFalse(status.isDir());
+			}
 
-        // now directory must be gone
-        checkPathEventualExistence(fs, directory, false, deadline);
-    }
+			// now that there are files, the directory must exist
+			assertTrue(fs.exists(directory));
+		}
+		finally {
+			// clean up
+			fs.delete(directory, true);
+		}
+
+		// now directory must be gone
+		checkPathEventualExistence(fs, directory, false, deadline);
+	}
+
+	@Override
+	public FileSystemKind getFileSystemKind() {
+		return FileSystemKind.OBJECT_STORE;
+	}
 }

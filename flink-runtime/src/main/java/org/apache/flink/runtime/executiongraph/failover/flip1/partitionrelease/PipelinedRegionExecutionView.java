@@ -20,50 +20,45 @@
 package org.apache.flink.runtime.executiongraph.failover.flip1.partitionrelease;
 
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
-import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
-import org.apache.flink.runtime.scheduler.strategy.SchedulingPipelinedRegion;
-import org.apache.flink.util.IterableUtils;
 
+import java.util.HashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * Provides a virtual execution state of a {@link SchedulingPipelinedRegion}.
+ * Provides a virtual execution state of a {@link PipelinedRegion}.
  *
  * <p>A pipelined region can be either finished or unfinished. It is finished iff. all its
  * executions have reached the finished state.
  */
 class PipelinedRegionExecutionView {
 
-    private final SchedulingPipelinedRegion pipelinedRegion;
+	private final PipelinedRegion pipelinedRegion;
 
-    private final Set<ExecutionVertexID> unfinishedVertices;
+	private final Set<ExecutionVertexID> unfinishedVertices;
 
-    PipelinedRegionExecutionView(final SchedulingPipelinedRegion pipelinedRegion) {
-        this.pipelinedRegion = checkNotNull(pipelinedRegion);
-        this.unfinishedVertices =
-                IterableUtils.toStream(pipelinedRegion.getVertices())
-                        .map(SchedulingExecutionVertex::getId)
-                        .collect(Collectors.toSet());
-    }
+	PipelinedRegionExecutionView(final PipelinedRegion pipelinedRegion) {
+		this.pipelinedRegion = checkNotNull(pipelinedRegion);
+		this.unfinishedVertices = new HashSet<>(pipelinedRegion.getExecutionVertexIds());
+	}
 
-    public boolean isFinished() {
-        return unfinishedVertices.isEmpty();
-    }
+	public boolean isFinished() {
+		return unfinishedVertices.isEmpty();
+	}
 
-    public void vertexFinished(final ExecutionVertexID executionVertexId) {
-        assertVertexInRegion(executionVertexId);
-        unfinishedVertices.remove(executionVertexId);
-    }
+	public void vertexFinished(final ExecutionVertexID executionVertexId) {
+		checkArgument(pipelinedRegion.contains(executionVertexId));
+		unfinishedVertices.remove(executionVertexId);
+	}
 
-    public void vertexUnfinished(final ExecutionVertexID executionVertexId) {
-        assertVertexInRegion(executionVertexId);
-        unfinishedVertices.add(executionVertexId);
-    }
+	public void vertexUnfinished(final ExecutionVertexID executionVertexId) {
+		checkArgument(pipelinedRegion.contains(executionVertexId));
+		unfinishedVertices.add(executionVertexId);
+	}
 
-    private void assertVertexInRegion(final ExecutionVertexID executionVertexId) {
-        pipelinedRegion.getVertex(executionVertexId);
-    }
+	public PipelinedRegion getPipelinedRegion() {
+		return pipelinedRegion;
+	}
 }

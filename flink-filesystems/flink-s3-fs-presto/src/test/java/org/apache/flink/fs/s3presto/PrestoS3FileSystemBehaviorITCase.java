@@ -25,8 +25,8 @@ import org.apache.flink.core.fs.FileSystemKind;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.testutils.s3.S3TestCredentials;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -34,39 +34,39 @@ import java.util.UUID;
 /**
  * An implementation of the {@link FileSystemBehaviorTestSuite} for the s3a-based S3 file system.
  */
-class PrestoS3FileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
+public class PrestoS3FileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
 
-    private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
+	private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
 
-    @BeforeAll
-    static void checkCredentialsAndSetup() throws IOException {
-        // check whether credentials exist
-        S3TestCredentials.assumeCredentialsAvailable();
+	@BeforeClass
+	public static void checkCredentialsAndSetup() throws IOException {
+		// check whether credentials exist
+		S3TestCredentials.assumeCredentialsAvailable();
 
-        // initialize configuration with valid credentials
-        final Configuration conf = new Configuration();
-        conf.setString("s3.access.key", S3TestCredentials.getS3AccessKey());
-        conf.setString("s3.secret.key", S3TestCredentials.getS3SecretKey());
-        FileSystem.initialize(conf, null);
-    }
+		// initialize configuration with valid credentials
+		final Configuration conf = new Configuration();
+		conf.setString("s3.access.key", S3TestCredentials.getS3AccessKey());
+		conf.setString("s3.secret.key", S3TestCredentials.getS3SecretKey());
+		FileSystem.initialize(conf);
+	}
 
-    @AfterAll
-    static void clearFsConfig() throws IOException {
-        FileSystem.initialize(new Configuration(), null);
-    }
+	@AfterClass
+	public static void clearFsConfig() throws IOException {
+		FileSystem.initialize(new Configuration());
+	}
 
-    @Override
-    protected FileSystem getFileSystem() throws Exception {
-        return getBasePath().getFileSystem();
-    }
+	@Override
+	public FileSystem getFileSystem() throws Exception {
+		return getBasePath().getFileSystem();
+	}
 
-    @Override
-    protected Path getBasePath() throws Exception {
-        return new Path(S3TestCredentials.getTestBucketUri() + TEST_DATA_DIR);
-    }
+	@Override
+	public Path getBasePath() throws Exception {
+		return new Path(S3TestCredentials.getTestBucketUri() + TEST_DATA_DIR);
+	}
 
-    @Override
-    protected FileSystemKind getFileSystemKind() {
-        return FileSystemKind.OBJECT_STORE;
-    }
+	@Override
+	public FileSystemKind getFileSystemKind() {
+		return FileSystemKind.OBJECT_STORE;
+	}
 }

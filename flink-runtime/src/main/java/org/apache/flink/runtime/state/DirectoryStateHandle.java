@@ -18,80 +18,70 @@
 
 package org.apache.flink.runtime.state;
 
-import org.apache.flink.util.FileUtils;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.Path;
 
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
- * This state handle represents a directory. This class is, for example, used to represent the
- * directory of RocksDB's native checkpoint directories for local recovery.
+ * This state handle represents a directory. This class is, for example, used to represent the directory of RocksDB's
+ * native checkpoint directories for local recovery.
  */
 public class DirectoryStateHandle implements StateObject {
 
-    /** Serial version. */
-    private static final long serialVersionUID = 1L;
+	/** Serial version. */
+	private static final long serialVersionUID = 1L;
 
-    /** The path that describes the directory, as a string, to be serializable. */
-    private final String directoryString;
+	/** The path that describes the directory. */
+	@Nonnull
+	private final Path directory;
 
-    /** Transient path cache, to avoid re-parsing the string. */
-    private transient Path directory;
+	public DirectoryStateHandle(@Nonnull Path directory) {
+		this.directory = directory;
+	}
 
-    public DirectoryStateHandle(@Nonnull Path directory) {
-        this.directory = directory;
-        this.directoryString = directory.toString();
-    }
+	@Override
+	public void discardState() throws IOException {
+		FileSystem fileSystem = directory.getFileSystem();
+		fileSystem.delete(directory, true);
+	}
 
-    @Override
-    public void discardState() throws IOException {
-        ensurePath();
-        FileUtils.deleteDirectory(directory.toFile());
-    }
+	@Override
+	public long getStateSize() {
+		// For now, we will not report any size, but in the future this could (if needed) return the total dir size.
+		return 0L; // unknown
+	}
 
-    @Override
-    public long getStateSize() {
-        // For now, we will not report any size, but in the future this could (if needed) return the
-        // total dir size.
-        return 0L; // unknown
-    }
+	@Nonnull
+	public Path getDirectory() {
+		return directory;
+	}
 
-    @Nonnull
-    public Path getDirectory() {
-        ensurePath();
-        return directory;
-    }
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
 
-    private void ensurePath() {
-        if (directory == null) {
-            directory = Paths.get(directoryString);
-        }
-    }
+		DirectoryStateHandle that = (DirectoryStateHandle) o;
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
+		return directory.equals(that.directory);
+	}
 
-        DirectoryStateHandle that = (DirectoryStateHandle) o;
+	@Override
+	public int hashCode() {
+		return directory.hashCode();
+	}
 
-        return directoryString.equals(that.directoryString);
-    }
-
-    @Override
-    public int hashCode() {
-        return directoryString.hashCode();
-    }
-
-    @Override
-    public String toString() {
-        return "DirectoryStateHandle{" + "directory=" + directoryString + '}';
-    }
+	@Override
+	public String toString() {
+		return "DirectoryStateHandle{" +
+			"directory=" + directory +
+			'}';
+	}
 }

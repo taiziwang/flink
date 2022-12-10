@@ -28,69 +28,66 @@ import org.apache.flink.api.java.io.DiscardingOutputFormat;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple3;
 
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
 
 /**
- * Simple test for validating the parallelism of a bulk iteration. This test is not as comprehensive
- * as {@link DeltaIterationTranslationTest}.
+ * Simple test for validating the parallelism of a bulk iteration. This test is
+ * not as comprehensive as {@link DeltaIterationTranslationTest}.
  */
 @SuppressWarnings("serial")
-class BulkIterationTranslationTest implements java.io.Serializable {
+public class BulkIterationTranslationTest implements java.io.Serializable {
 
-    @Test
-    void testCorrectTranslation() {
-        final String jobName = "Test JobName";
+	@Test
+	public void testCorrectTranslation() {
+		final String jobName = "Test JobName";
 
-        final int numIterations = 13;
+		final int numIterations = 13;
 
-        final int defaultParallelism = 133;
-        final int iterationParallelism = 77;
+		final int defaultParallelism = 133;
+		final int iterationParallelism = 77;
 
-        ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
-        // ------------ construct the test program ------------------
+		// ------------ construct the test program ------------------
 
-        {
-            env.setParallelism(defaultParallelism);
+		{
+			env.setParallelism(defaultParallelism);
 
-            @SuppressWarnings("unchecked")
-            DataSet<Tuple3<Double, Long, String>> initialDataSet =
-                    env.fromElements(new Tuple3<>(3.44, 5L, "abc"));
+			@SuppressWarnings("unchecked")
+			DataSet<Tuple3<Double, Long, String>> initialDataSet = env.fromElements(new Tuple3<>(3.44, 5L, "abc"));
 
-            IterativeDataSet<Tuple3<Double, Long, String>> bulkIteration =
-                    initialDataSet.iterate(numIterations);
-            bulkIteration.setParallelism(iterationParallelism);
+			IterativeDataSet<Tuple3<Double, Long, String>> bulkIteration = initialDataSet.iterate(numIterations);
+			bulkIteration.setParallelism(iterationParallelism);
 
-            // test that multiple iteration consumers are supported
-            DataSet<Tuple3<Double, Long, String>> identity =
-                    bulkIteration.map(new IdentityMapper<>());
+			// test that multiple iteration consumers are supported
+			DataSet<Tuple3<Double, Long, String>> identity = bulkIteration
+				.map(new IdentityMapper<Tuple3<Double, Long, String>>());
 
-            DataSet<Tuple3<Double, Long, String>> result = bulkIteration.closeWith(identity);
+			DataSet<Tuple3<Double, Long, String>> result = bulkIteration.closeWith(identity);
 
-            result.output(new DiscardingOutputFormat<>());
-            result.writeAsText("/dev/null");
-        }
+			result.output(new DiscardingOutputFormat<Tuple3<Double, Long, String>>());
+			result.writeAsText("/dev/null");
+		}
 
-        Plan p = env.createProgramPlan(jobName);
+		Plan p = env.createProgramPlan(jobName);
 
-        // ------------- validate the plan ----------------
+		// ------------- validate the plan ----------------
 
-        BulkIterationBase<?> iteration =
-                (BulkIterationBase<?>) p.getDataSinks().iterator().next().getInput();
+		BulkIterationBase<?> iteration = (BulkIterationBase<?>) p.getDataSinks().iterator().next().getInput();
 
-        assertThat(p.getJobName()).isEqualTo(jobName);
-        assertThat(p.getDefaultParallelism()).isEqualTo(defaultParallelism);
-        assertThat(iteration.getParallelism()).isEqualTo(iterationParallelism);
-    }
+		assertEquals(jobName, p.getJobName());
+		assertEquals(defaultParallelism, p.getDefaultParallelism());
+		assertEquals(iterationParallelism, iteration.getParallelism());
+	}
 
-    // --------------------------------------------------------------------------------------------
+	// --------------------------------------------------------------------------------------------
 
-    private static class IdentityMapper<T> extends RichMapFunction<T, T> {
-        @Override
-        public T map(T value) throws Exception {
-            return value;
-        }
-    }
+	private static class IdentityMapper<T> extends RichMapFunction<T, T> {
+		@Override
+		public T map(T value) throws Exception {
+			return value;
+		}
+	}
 }

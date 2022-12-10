@@ -25,44 +25,46 @@ import org.apache.flink.core.fs.FileSystemKind;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.testutils.oss.OSSTestCredentials;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 
 import java.io.IOException;
 import java.util.UUID;
 
-/** An implementation of the {@link FileSystemBehaviorTestSuite} for the OSS file system. */
-class HadoopOSSFileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
-    private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
+/**
+ * An implementation of the {@link FileSystemBehaviorTestSuite} for the OSS file system.
+ */
+public class HadoopOSSFileSystemBehaviorITCase extends FileSystemBehaviorTestSuite {
+	private static final String TEST_DATA_DIR = "tests-" + UUID.randomUUID();
 
-    @BeforeAll
-    static void setup() throws IOException {
-        OSSTestCredentials.assumeCredentialsAvailable();
+	@BeforeClass
+	public static void setup() throws IOException {
+		OSSTestCredentials.assumeCredentialsAvailable();
 
-        final Configuration conf = new Configuration();
-        conf.setString("fs.oss.endpoint", OSSTestCredentials.getOSSEndpoint());
-        conf.setString("fs.oss.accessKeyId", OSSTestCredentials.getOSSAccessKey());
-        conf.setString("fs.oss.accessKeySecret", OSSTestCredentials.getOSSSecretKey());
-        FileSystem.initialize(conf, null);
-    }
+		final Configuration conf = new Configuration();
+		conf.setString("fs.oss.endpoint", OSSTestCredentials.getOSSEndpoint());
+		conf.setString("fs.oss.accessKeyId", OSSTestCredentials.getOSSAccessKey());
+		conf.setString("fs.oss.accessKeySecret", OSSTestCredentials.getOSSSecretKey());
+		FileSystem.initialize(conf);
+	}
 
-    @Override
-    protected FileSystem getFileSystem() throws Exception {
-        return getBasePath().getFileSystem();
-    }
+	@Override
+	public FileSystem getFileSystem() throws Exception {
+		return getBasePath().getFileSystem();
+	}
 
-    @Override
-    protected Path getBasePath() throws Exception {
-        return new Path(OSSTestCredentials.getTestBucketUri() + TEST_DATA_DIR);
-    }
+	@Override
+	public Path getBasePath() throws Exception {
+		return new Path(OSSTestCredentials.getTestBucketUri() + TEST_DATA_DIR);
+	}
 
-    @Override
-    protected FileSystemKind getFileSystemKind() {
-        return FileSystemKind.OBJECT_STORE;
-    }
+	@Override
+	public FileSystemKind getFileSystemKind() {
+		return FileSystemKind.OBJECT_STORE;
+	}
 
-    @AfterAll
-    static void clearFsConfig() throws IOException {
-        FileSystem.initialize(new Configuration(), null);
-    }
+	@AfterClass
+	public static void clearFsConfig() throws IOException {
+		FileSystem.initialize(new Configuration());
+	}
 }

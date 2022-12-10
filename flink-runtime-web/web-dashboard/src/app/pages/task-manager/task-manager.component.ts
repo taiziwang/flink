@@ -16,19 +16,50 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-
-import { TaskManagerStatusComponent } from '@flink-runtime-web/pages/task-manager/status/task-manager-status.component';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { Subject } from 'rxjs';
+import { flatMap, takeUntil } from 'rxjs/operators';
+import { StatusService, TaskManagerService } from 'services';
 
 @Component({
   selector: 'flink-task-manager',
   templateUrl: './task-manager.component.html',
   styleUrls: ['./task-manager.component.less'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TaskManagerStatusComponent, RouterOutlet],
-  standalone: true
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class TaskManagerComponent {
-  constructor() {}
+export class TaskManagerComponent implements OnInit, OnDestroy {
+  destroy$ = new Subject();
+  isLoading = true;
+
+  constructor(
+    private cdr: ChangeDetectorRef,
+    private activatedRoute: ActivatedRoute,
+    private taskManagerService: TaskManagerService,
+    private statusService: StatusService
+  ) {}
+
+  ngOnInit() {
+    this.statusService.refresh$
+      .pipe(
+        takeUntil(this.destroy$),
+        flatMap(() => this.taskManagerService.loadManager(this.activatedRoute.snapshot.params.taskManagerId))
+      )
+      .subscribe(
+        data => {
+          this.taskManagerService.taskManagerDetail$.next(data);
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        },
+        () => {
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        }
+      );
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 }

@@ -23,11 +23,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-filesystems</artifactId>
-		<version>1.17-SNAPSHOT</version>
+		<version>1.10-SNAPSHOT</version>
+		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-azure-fs-hadoop</artifactId>
-	<name>Flink : FileSystems : Azure FS Hadoop</name>
+	<name>flink-azure-fs-hadoop</name>
 
 	<packaging>jar</packaging>
 
@@ -35,7 +36,6 @@ under the License.
 	<properties>
 		<fs.azure.sdk.version>1.16.0</fs.azure.sdk.version>
 		<fs.jackson.core.version>2.9.4</fs.jackson.core.version>
-		<jetty.version>9.3.24.v20180605</jetty.version>
 	</properties>
 
 	<dependencies>
@@ -68,14 +68,6 @@ under the License.
 					<groupId>org.apache.hadoop</groupId>
 					<artifactId>hadoop-common</artifactId>
 				</exclusion>
-				<exclusion>
-					<groupId>ch.qos.reload4j</groupId>
-					<artifactId>reload4j</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-reload4j</artifactId>
-				</exclusion>
 			</exclusions>
 		</dependency>
 
@@ -98,17 +90,6 @@ under the License.
 
 	</dependencies>
 
-	<dependencyManagement>
-		<dependencies>
-			<dependency>
-				<!-- Pulled in by hadoop-azure; bumps it to the version used by 3.1.2+ for security purposes -->
-				<groupId>org.eclipse.jetty</groupId>
-				<artifactId>jetty-util-ajax</artifactId>
-				<version>${jetty.version}</version>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
-
 	<build>
 		<plugins>
 			<!-- Relocate all Azure related classes -->
@@ -123,6 +104,7 @@ under the License.
 							<goal>shade</goal>
 						</goals>
 						<configuration>
+							<shadeTestJar>false</shadeTestJar>
 							<artifactSet>
 								<includes>
 									<include>*:*</include>
@@ -149,8 +131,8 @@ under the License.
 
 								<!-- shade dependencies internally used by Azure and never exposed downstream -->
 								<relocation>
-									<pattern>org.apache.http</pattern>
-									<shadedPattern>org.apache.flink.fs.azure.shaded.org.apache.http</shadedPattern>
+									<pattern>org.apache.httpcomponents</pattern>
+									<shadedPattern>org.apache.flink.fs.azure.shaded.org.apache.httpcomponents</shadedPattern>
 								</relocation>
 								<relocation>
 									<pattern>commons-logging</pattern>
@@ -198,7 +180,11 @@ under the License.
 										<exclude>properties.dtd</exclude>
 										<exclude>PropertyList-1.0.dtd</exclude>
 										<exclude>mozilla/**</exclude>
+										<exclude>META-INF/maven/**</exclude>
 										<exclude>META-INF/LICENSE.txt</exclude>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
 									</excludes>
 								</filter>
 							</filters>

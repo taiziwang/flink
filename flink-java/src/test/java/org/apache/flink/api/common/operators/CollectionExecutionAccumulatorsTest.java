@@ -25,52 +25,56 @@ import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.DiscardingOutputFormat;
 import org.apache.flink.configuration.Configuration;
 
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
-/** Tests for {@link CollectionExecutor} with accumulators. */
-class CollectionExecutionAccumulatorsTest {
+/**
+ * Tests for {@link CollectionExecutor} with accumulators.
+ */
+public class CollectionExecutionAccumulatorsTest {
 
-    private static final String ACCUMULATOR_NAME = "TEST ACC";
+	private static final String ACCUMULATOR_NAME = "TEST ACC";
 
-    @Test
-    void testAccumulator() {
-        try {
-            final int numElements = 100;
+	@Test
+	public void testAccumulator() {
+		try {
+			final int numElements = 100;
 
-            ExecutionEnvironment env = ExecutionEnvironment.createCollectionsEnvironment();
+			ExecutionEnvironment env = ExecutionEnvironment.createCollectionsEnvironment();
 
-            env.generateSequence(1, numElements)
-                    .map(new CountingMapper())
-                    .output(new DiscardingOutputFormat<Long>());
+			env.generateSequence(1, numElements)
+				.map(new CountingMapper())
+				.output(new DiscardingOutputFormat<Long>());
 
-            JobExecutionResult result = env.execute();
+			JobExecutionResult result = env.execute();
 
-            assertThat(result.getNetRuntime()).isGreaterThanOrEqualTo(0);
+			assertTrue(result.getNetRuntime() >= 0);
 
-            assertThat((int) result.getAccumulatorResult(ACCUMULATOR_NAME)).isEqualTo(numElements);
-        } catch (Exception e) {
-            e.printStackTrace();
-            fail(e.getMessage());
-        }
-    }
+			assertEquals(numElements, (int) result.getAccumulatorResult(ACCUMULATOR_NAME));
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+	}
 
-    @SuppressWarnings("serial")
-    private static class CountingMapper extends RichMapFunction<Long, Long> {
+	@SuppressWarnings("serial")
+	private static class CountingMapper extends RichMapFunction<Long, Long> {
 
-        private IntCounter accumulator;
+		private IntCounter accumulator;
 
-        @Override
-        public void open(Configuration parameters) {
-            accumulator = getRuntimeContext().getIntCounter(ACCUMULATOR_NAME);
-        }
+		@Override
+		public void open(Configuration parameters) {
+			accumulator = getRuntimeContext().getIntCounter(ACCUMULATOR_NAME);
+		}
 
-        @Override
-        public Long map(Long value) {
-            accumulator.add(1);
-            return value;
-        }
-    }
+		@Override
+		public Long map(Long value) {
+			accumulator.add(1);
+			return value;
+		}
+	}
 }

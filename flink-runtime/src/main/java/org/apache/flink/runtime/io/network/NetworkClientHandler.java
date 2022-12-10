@@ -23,28 +23,25 @@ import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel
 
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
 
-/** Channel handler to read and write network messages on client side. */
+/**
+ * Channel handler to read and write network messages on client side.
+ */
 public interface NetworkClientHandler extends ChannelHandler {
 
-    void addInputChannel(RemoteInputChannel inputChannel) throws IOException;
+	void addInputChannel(RemoteInputChannel inputChannel) throws IOException;
 
-    void removeInputChannel(RemoteInputChannel inputChannel);
+	void removeInputChannel(RemoteInputChannel inputChannel);
 
-    @Nullable
-    RemoteInputChannel getInputChannel(InputChannelID inputChannelId);
+	void cancelRequestFor(InputChannelID inputChannelId);
 
-    void cancelRequestFor(InputChannelID inputChannelId);
-
-    void setConnectionId(ConnectionID connectionId);
-
-    /**
-     * Return whether there is channel error.
-     *
-     * @return true if there is channel error
-     */
-    boolean hasChannelError();
+	/**
+	 * The credit begins to announce after receiving the sender's backlog from buffer response.
+	 * Than means it should only happen after some interactions with the channel to make sure
+	 * the context will not be null.
+	 *
+	 * @param inputChannel The input channel with unannounced credits.
+	 */
+	void notifyCreditAvailable(final RemoteInputChannel inputChannel);
 }

@@ -23,17 +23,18 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.17-SNAPSHOT</version>
+		<version>1.10-SNAPSHOT</version>
+		<relativePath>..</relativePath>
 	</parent>
 
-	<artifactId>flink-yarn</artifactId>
-	<name>Flink : Yarn</name>
+	<artifactId>flink-yarn_${scala.binary.version}</artifactId>
+	<name>flink-yarn</name>
 	<packaging>jar</packaging>
 
 	<properties>
 		<!-- for testing (will override Hadoop's default dependency on too low SDK versions that
 			do not work with our httpcomponents version) -->
-		<aws.sdk.version>1.12.319</aws.sdk.version>
+		<aws.sdk.version>1.11.171</aws.sdk.version>
 	</properties>
 
 	<dependencies>
@@ -42,43 +43,31 @@ under the License.
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-runtime</artifactId>
+			<artifactId>flink-runtime_${scala.binary.version}</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-clients</artifactId>
+			<artifactId>flink-clients_${scala.binary.version}</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 
 		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-common</artifactId>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-shaded-hadoop-2</artifactId>
+			<version>${hadoop.version}-${flink.shaded.version}</version>
 		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-hdfs</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-yarn-common</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-yarn-client</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-mapreduce-client-core</artifactId>
-		</dependency>
-		
 
 		<!-- test dependencies -->
+
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils_${scala.binary.version}</artifactId>
+			<version>${project.version}</version>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
@@ -87,7 +76,7 @@ under the License.
 
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-runtime</artifactId>
+			<artifactId>flink-runtime_${scala.binary.version}</artifactId>
 			<version>${project.version}</version>
 			<type>test-jar</type>
 			<scope>test</scope>
@@ -98,13 +87,7 @@ under the License.
 			<artifactId>hadoop-hdfs</artifactId>
 			<scope>test</scope>
 			<type>test-jar</type>
-			<version>${flink.hadoop.version}</version>
-			<exclusions>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>log4j</artifactId>
-				</exclusion>
-			</exclusions>
+			<version>${hadoop.version}</version>
 		</dependency>
 
 		<dependency>
@@ -112,16 +95,8 @@ under the License.
 			<artifactId>hadoop-common</artifactId>
 			<scope>test</scope>
 			<type>test-jar</type>
-			<version>${flink.hadoop.version}</version>
+			<version>${hadoop.version}</version>
 			<exclusions>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>log4j</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-log4j12</artifactId>
-				</exclusion>
 				<exclusion>
 					<!-- This dependency is no longer shipped with the JDK since Java 9.-->
 					<groupId>jdk.tools</groupId>
@@ -129,57 +104,65 @@ under the License.
 				</exclusion>
 			</exclusions>
 		</dependency>
-
-		<!-- for the S3 tests of YarnFileStageTestS3ITCase -->
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-aws</artifactId>
-			<version>${flink.hadoop.version}</version>
-			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>log4j</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-log4j12</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.apache.avro</groupId>
-					<artifactId>avro</artifactId>
-				</exclusion>
-				<!-- The aws-java-sdk-core requires jackson 2.6, but
-					hadoop pulls in 2.3 -->
-				<exclusion>
-					<groupId>com.fasterxml.jackson.core</groupId>
-					<artifactId>jackson-annotations</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>com.fasterxml.jackson.core</groupId>
-					<artifactId>jackson-core</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>com.fasterxml.jackson.core</groupId>
-					<artifactId>jackson-databind</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-		<!-- override Hadoop's default dependency on too low SDK versions that do not work
-			with our httpcomponents version when initialising the s3a file system -->
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk-s3</artifactId>
-			<version>${aws.sdk.version}</version>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk-sts</artifactId>
-			<version>${aws.sdk.version}</version>
-			<scope>test</scope>
-		</dependency>
 	</dependencies>
+
+	<profiles>
+		<profile>
+			<!-- Hadoop >= 2.6 moved the S3 file systems from hadoop-common into hadoop-aws artifact
+				(see https://issues.apache.org/jira/browse/HADOOP-11074)
+				We can add the (test) dependency per default once 2.6 is the minimum required version.
+			-->
+			<id>include_hadoop_aws</id>
+			<activation>
+				<property>
+					<name>include_hadoop_aws</name>
+				</property>
+			</activation>
+			<dependencies>
+				<!-- for the S3 tests of YarnFileStageTestS3ITCase -->
+				<dependency>
+					<groupId>org.apache.hadoop</groupId>
+					<artifactId>hadoop-aws</artifactId>
+					<version>${hadoop.version}</version>
+					<scope>test</scope>
+					<exclusions>
+						<exclusion>
+							<groupId>org.apache.avro</groupId>
+							<artifactId>avro</artifactId>
+						</exclusion>
+						<!-- The aws-java-sdk-core requires jackson 2.6, but
+							hadoop pulls in 2.3 -->
+						<exclusion>
+							<groupId>com.fasterxml.jackson.core</groupId>
+							<artifactId>jackson-annotations</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.fasterxml.jackson.core</groupId>
+							<artifactId>jackson-core</artifactId>
+						</exclusion>
+						<exclusion>
+							<groupId>com.fasterxml.jackson.core</groupId>
+							<artifactId>jackson-databind</artifactId>
+						</exclusion>
+					</exclusions>
+				</dependency>
+				<!-- override Hadoop's default dependency on too low SDK versions that do not work
+					with our httpcomponents version when initialising the s3a file system -->
+				<dependency>
+					<groupId>com.amazonaws</groupId>
+					<artifactId>aws-java-sdk-s3</artifactId>
+					<version>${aws.sdk.version}</version>
+					<scope>test</scope>
+				</dependency>
+				<dependency>
+					<groupId>com.amazonaws</groupId>
+					<artifactId>aws-java-sdk-sts</artifactId>
+					<version>${aws.sdk.version}</version>
+					<scope>test</scope>
+				</dependency>
+			</dependencies>
+		</profile>
+	</profiles>
 
 	<build>
 		<plugins>
@@ -195,6 +178,18 @@ under the License.
 						<configuration>
 							<skip>true</skip>
 						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>test-jar</goal>
+						</goals>
 					</execution>
 				</executions>
 			</plugin>

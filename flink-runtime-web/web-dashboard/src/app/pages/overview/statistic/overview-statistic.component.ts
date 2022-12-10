@@ -16,41 +16,33 @@
  * limitations under the License.
  */
 
-import { DecimalPipe, NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { OverviewInterface } from 'interfaces';
 import { Subject } from 'rxjs';
-import { mergeMap, takeUntil } from 'rxjs/operators';
-
-import { Overview } from '@flink-runtime-web/interfaces';
-import { OverviewService, StatusService } from '@flink-runtime-web/services';
-import { NzCardModule } from 'ng-zorro-antd/card';
-import { NzDividerModule } from 'ng-zorro-antd/divider';
-import { NzGridModule } from 'ng-zorro-antd/grid';
+import { flatMap, takeUntil } from 'rxjs/operators';
+import { OverviewService, StatusService } from 'services';
 
 @Component({
   selector: 'flink-overview-statistic',
   templateUrl: './overview-statistic.component.html',
   styleUrls: ['./overview-statistic.component.less'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NzGridModule, NgIf, NzCardModule, NzDividerModule, DecimalPipe],
-  standalone: true
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class OverviewStatisticComponent implements OnInit, OnDestroy {
-  public statistic: Overview | null;
-
-  private readonly destroy$ = new Subject<void>();
+  statistic: OverviewInterface | null;
+  destroy$ = new Subject();
 
   constructor(
-    private readonly statusService: StatusService,
-    private readonly overviewService: OverviewService,
-    private readonly cdr: ChangeDetectorRef
+    private statusService: StatusService,
+    private overviewService: OverviewService,
+    private cdr: ChangeDetectorRef
   ) {}
 
-  public ngOnInit(): void {
+  ngOnInit() {
     this.statusService.refresh$
       .pipe(
         takeUntil(this.destroy$),
-        mergeMap(() => this.overviewService.loadOverview())
+        flatMap(() => this.overviewService.loadOverview())
       )
       .subscribe(data => {
         this.statistic = data;
@@ -58,7 +50,7 @@ export class OverviewStatisticComponent implements OnInit, OnDestroy {
       });
   }
 
-  public ngOnDestroy(): void {
+  ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
   }

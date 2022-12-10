@@ -23,17 +23,19 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.17-SNAPSHOT</version>
+		<version>1.10-SNAPSHOT</version>
+		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-walkthroughs</artifactId>
 	<packaging>pom</packaging>
 
-	<name>Flink : Walkthrough : </name>
+	<name>flink-walkthroughs</name>
 
 	<modules>
 		<module>flink-walkthrough-common</module>
-		<module>flink-walkthrough-datastream-java</module>
+		<module>flink-walkthrough-table-java</module>
+		<module>flink-walkthrough-table-scala</module>
 	</modules>
 	<build>
 		<extensions>

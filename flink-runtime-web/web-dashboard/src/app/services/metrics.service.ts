@@ -18,46 +18,41 @@
 
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-
-import { MetricMap, JobMetric, Watermarks, MetricMapWithTimestamp } from '@flink-runtime-web/interfaces';
-
-import { ConfigService } from './config.service';
+import { BASE_URL, LONG_MIN_VALUE } from 'config';
 
 @Injectable({
   providedIn: 'root'
 })
 export class MetricsService {
-  constructor(private readonly httpClient: HttpClient, private readonly configService: ConfigService) {}
+  constructor(private httpClient: HttpClient) {}
 
-  public loadAllAvailableMetrics(jobId: string, vertexId: string): Observable<JobMetric[]> {
-    return this.httpClient
-      .get<JobMetric[]>(`${this.configService.BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics`)
-      .pipe(
-        map(item =>
-          item.sort((pre, next) => {
-            const preId = pre.id.toLowerCase();
-            const nextId = next.id.toLowerCase();
-            if (preId < nextId) {
-              return -1;
-            } else if (preId > nextId) {
-              return 1;
-            } else {
-              return 0;
-            }
-          })
-        )
-      );
+  /**
+   * Get available metric list
+   * @param jobId
+   * @param vertexId
+   */
+  getAllAvailableMetrics(jobId: string, vertexId: string) {
+    return this.httpClient.get<Array<{ id: string; value: string }>>(
+      `${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics`
+    );
   }
 
-  public loadMetrics(jobId: string, vertexId: string, listOfMetricName: string[]): Observable<MetricMapWithTimestamp> {
+  /**
+   * Get metric data
+   * @param jobId
+   * @param vertexId
+   * @param listOfMetricName
+   */
+  getMetrics(jobId: string, vertexId: string, listOfMetricName: string[]) {
     const metricName = listOfMetricName.join(',');
     return this.httpClient
-      .get<JobMetric[]>(`${this.configService.BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics?get=${metricName}`)
+      .get<Array<{ id: string; value: string }>>(
+        `${BASE_URL}/jobs/${jobId}/vertices/${vertexId}/metrics?get=${metricName}`
+      )
       .pipe(
         map(arr => {
-          const result: MetricMap = {};
+          const result: { [id: string]: number } = {};
           arr.forEach(item => {
             result[item.id] = parseInt(item.value, 10);
           });
@@ -69,70 +64,38 @@ export class MetricsService {
       );
   }
 
-  /** Get aggregated metric data from all subtasks of the given vertexId. */
-  public loadAggregatedMetrics(
-    jobId: string,
-    vertexId: string,
-    listOfMetricName: string[],
-    aggregate: string = 'max'
-  ): Observable<MetricMap> {
-    const metricName = listOfMetricName.join(',');
-    return this.httpClient
-      .get<Array<{ id: string; min: number; max: number; avg: number; sum: number }>>(
-        `${this.configService.BASE_URL}/jobs/${jobId}/vertices/${vertexId}/subtasks/metrics?get=${metricName}`
-      )
-      .pipe(
-        map(arr => {
-          const result: MetricMap = {};
-          arr.forEach(item => {
-            switch (aggregate) {
-              case 'min':
-                result[item.id] = +item.min;
-                break;
-              case 'max':
-                result[item.id] = +item.max;
-                break;
-              case 'avg':
-                result[item.id] = +item.avg;
-                break;
-              case 'sum':
-                result[item.id] = +item.sum;
-                break;
-              default:
-                throw new Error(`Unsupported aggregate: ${aggregate}`);
-            }
-          });
-          return result;
-        })
-      );
-  }
-
-  public loadWatermarks(jobId: string, vertexId: string): Observable<Watermarks> {
-    return this.httpClient
-      .get<JobMetric[]>(`${this.configService.BASE_URL}/jobs/${jobId}/vertices/${vertexId}/watermarks`)
-      .pipe(
-        map(arr => {
-          let minValue = NaN;
-          let lowWatermark: number;
-          const watermarks: MetricMap = {};
-          arr.forEach(item => {
-            const value = parseInt(item.value, 10);
-            const subTaskIndex = item.id.replace('.currentInputWatermark', '');
-            watermarks[subTaskIndex] = value;
-            if (isNaN(minValue) || value < minValue) {
-              minValue = value;
-            }
-          });
-          if (!isNaN(minValue) && minValue > this.configService.LONG_MIN_VALUE) {
-            lowWatermark = minValue;
-          } else {
-            lowWatermark = NaN;
+  /**
+   * Get watermarks data
+   * @param jobId
+   * @param vertexId
+   * @param parallelism
+   */
+  getWatermarks(jobId: string, vertexId: string, parallelism: number) {
+    const listOfMetricName = new Array(parallelism).fill(0).map((_, index) => `${index}.currentInputWatermark`);
+    return this.getMetrics(jobId, vertexId, listOfMetricName).pipe(
+      map(metrics => {
+        let minValue = NaN;
+        let lowWatermark = NaN;
+        const watermarks: { [id: string]: number } = {};
+        const ref = metrics.values;
+        for (const key in ref) {
+          const value = ref[key];
+          const subTaskIndex = key.replace('.currentInputWatermark', '');
+          watermarks[subTaskIndex] = value;
+          if (isNaN(minValue) || value < minValue) {
+            minValue = value;
           }
-          return {
-            lowWatermark,
-            watermarks
-          };
-        })
-      );
+        }
+        if (!isNaN(minValue) && minValue > LONG_MIN_VALUE) {
+          lowWatermark = minValue;
+        } else {
+          lowWatermark = NaN;
+        }
+        return {
+          lowWatermark,
+          watermarks
+        };
+      })
+    );
   }
 }

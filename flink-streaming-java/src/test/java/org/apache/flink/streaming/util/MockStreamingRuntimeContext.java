@@ -18,94 +18,87 @@
 package org.apache.flink.streaming.util;
 
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.metrics.groups.OperatorMetricGroup;
+import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.operators.testutils.MockEnvironment;
 import org.apache.flink.runtime.operators.testutils.MockEnvironmentBuilder;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
 
-import java.util.HashMap;
+import java.util.Collections;
 
-/** Mock {@link StreamingRuntimeContext} to use in tests. */
+/**
+ * Mock {@link StreamingRuntimeContext} to use in tests.
+ */
 public class MockStreamingRuntimeContext extends StreamingRuntimeContext {
 
-    private final boolean isCheckpointingEnabled;
+	private final boolean isCheckpointingEnabled;
 
-    private final int numParallelSubtasks;
-    private final int subtaskIndex;
+	private final int numParallelSubtasks;
+	private final int subtaskIndex;
 
-    public MockStreamingRuntimeContext(
-            boolean isCheckpointingEnabled, int numParallelSubtasks, int subtaskIndex) {
+	public MockStreamingRuntimeContext(
+		boolean isCheckpointingEnabled,
+		int numParallelSubtasks,
+		int subtaskIndex) {
 
-        this(
-                isCheckpointingEnabled,
-                numParallelSubtasks,
-                subtaskIndex,
-                new MockEnvironmentBuilder()
-                        .setTaskName("mockTask")
-                        .setManagedMemorySize(4 * MemoryManager.DEFAULT_PAGE_SIZE)
-                        .build());
-    }
+		super(
+			new MockStreamOperator(),
+			new MockEnvironmentBuilder()
+				.setTaskName("mockTask")
+				.setMemorySize(4 * MemoryManager.DEFAULT_PAGE_SIZE)
+				.build(),
+			Collections.emptyMap());
 
-    public MockStreamingRuntimeContext(
-            boolean isCheckpointingEnabled,
-            int numParallelSubtasks,
-            int subtaskIndex,
-            MockEnvironment environment) {
+		this.isCheckpointingEnabled = isCheckpointingEnabled;
+		this.numParallelSubtasks = numParallelSubtasks;
+		this.subtaskIndex = subtaskIndex;
+	}
 
-        super(new MockStreamOperator(), environment, new HashMap<>());
+	@Override
+	public MetricGroup getMetricGroup() {
+		return new UnregisteredMetricsGroup();
+	}
 
-        this.isCheckpointingEnabled = isCheckpointingEnabled;
-        this.numParallelSubtasks = numParallelSubtasks;
-        this.subtaskIndex = subtaskIndex;
-    }
+	@Override
+	public boolean isCheckpointingEnabled() {
+		return isCheckpointingEnabled;
+	}
 
-    @Override
-    public OperatorMetricGroup getMetricGroup() {
-        return UnregisteredMetricsGroup.createOperatorMetricGroup();
-    }
+	@Override
+	public int getIndexOfThisSubtask() {
+		return subtaskIndex;
+	}
 
-    @Override
-    public boolean isCheckpointingEnabled() {
-        return isCheckpointingEnabled;
-    }
+	@Override
+	public int getNumberOfParallelSubtasks() {
+		return numParallelSubtasks;
+	}
 
-    @Override
-    public int getIndexOfThisSubtask() {
-        return subtaskIndex;
-    }
+	private static class MockStreamOperator extends AbstractStreamOperator<Integer> {
+		private static final long serialVersionUID = -1153976702711944427L;
 
-    @Override
-    public int getNumberOfParallelSubtasks() {
-        return numParallelSubtasks;
-    }
+		private transient TestProcessingTimeService testProcessingTimeService;
 
-    private static class MockStreamOperator extends AbstractStreamOperator<Integer> {
-        private static final long serialVersionUID = -1153976702711944427L;
+		@Override
+		public ExecutionConfig getExecutionConfig() {
+			return new ExecutionConfig();
+		}
 
-        private transient TestProcessingTimeService testProcessingTimeService;
+		@Override
+		public OperatorID getOperatorID() {
+			return new OperatorID();
+		}
 
-        @Override
-        public ExecutionConfig getExecutionConfig() {
-            return new ExecutionConfig();
-        }
-
-        @Override
-        public OperatorID getOperatorID() {
-            return new OperatorID();
-        }
-
-        @Override
-        public ProcessingTimeService getProcessingTimeService() {
-            if (testProcessingTimeService == null) {
-                testProcessingTimeService = new TestProcessingTimeService();
-            }
-            return testProcessingTimeService;
-        }
-    }
+		@Override
+		protected ProcessingTimeService getProcessingTimeService() {
+			if (testProcessingTimeService == null) {
+				testProcessingTimeService = new TestProcessingTimeService();
+			}
+			return testProcessingTimeService;
+		}
+	}
 }

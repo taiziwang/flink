@@ -18,45 +18,26 @@
 
 package org.apache.flink.table.client.cli;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.apache.flink.types.Row;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import org.junit.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.Arrays;
 
-/** Test {@link CliUtils}. */
-class CliUtilsTest {
+import static org.junit.Assert.assertEquals;
 
-    @TempDir private Path realFolder;
+/**
+ * Tests {@link CliUtils}.
+ */
+public class CliUtilsTest {
 
-    @TempDir private Path linkFolder;
-
-    @Test
-    void testCreateFileRealDir() {
-        Path realDirHistoryFile = Paths.get(realFolder.toFile().getPath(), "history.file");
-        CliUtils.createFile(realDirHistoryFile);
-        assertThat(Files.exists(realDirHistoryFile)).isTrue();
-    }
-
-    @Test
-    void testCreateFileLinkDir() throws IOException {
-        Path link = Paths.get(linkFolder.toFile().getPath(), "link");
-        Files.createSymbolicLink(link, realFolder);
-        Path linkDirHistoryFile = Paths.get(link.toAbsolutePath().toString(), "history.file");
-        Path realLinkDirHistoryFile = Paths.get(realFolder.toFile().getPath(), "history.file");
-        CliUtils.createFile(linkDirHistoryFile);
-        assertThat(Files.exists(linkDirHistoryFile)).isTrue();
-        assertThat(Files.exists(realLinkDirHistoryFile)).isTrue();
-    }
-
-    @Test
-    void testCreateFileSubDir() {
-        Path subDirHistoryFile = Paths.get(realFolder.toFile().getPath(), "subdir", "history.file");
-        CliUtils.createFile(subDirHistoryFile);
-        assertThat(Files.exists(subDirHistoryFile)).isTrue();
-    }
+	@Test
+	public void testArrayToString() {
+		Row row = new Row(4);
+		row.setField(0, new int[]{1, 2});
+		row.setField(1, new Integer[]{3, 4});
+		row.setField(2, new Object[]{new int[]{5, 6}, new int[]{7, 8}});
+		row.setField(3, new Integer[][]{new Integer[]{9, 10}, new Integer[]{11, 12}});
+		assertEquals("[[1, 2], [3, 4], [[5, 6], [7, 8]], [[9, 10], [11, 12]]]", Arrays.toString(CliUtils.rowToString(row)));
+	}
 }

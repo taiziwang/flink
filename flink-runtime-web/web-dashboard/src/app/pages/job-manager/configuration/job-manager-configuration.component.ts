@@ -16,50 +16,24 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { forkJoin, of, Subject } from 'rxjs';
-import { catchError, takeUntil } from 'rxjs/operators';
-
-import { ConfigurationCardsComponent } from '@flink-runtime-web/components/configuration-cards/configuration-cards.component';
-import { ClusterConfiguration, EnvironmentInfo } from '@flink-runtime-web/interfaces';
-import { JobManagerService } from '@flink-runtime-web/services';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { JobManagerService } from 'services';
 
 @Component({
   selector: 'flink-job-manager-configuration',
   templateUrl: './job-manager-configuration.component.html',
   styleUrls: ['./job-manager-configuration.component.less'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ConfigurationCardsComponent],
-  standalone: true
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class JobManagerConfigurationComponent implements OnInit, OnDestroy {
-  listOfConfig: ClusterConfiguration[] = [];
-  environmentInfo?: EnvironmentInfo;
-  loading = true;
-  private destroy$ = new Subject<void>();
+export class JobManagerConfigurationComponent implements OnInit {
+  listOfConfig: Array<{ key: string; value: string }> = [];
 
-  readonly trackByConfig = (_: number, value: ClusterConfiguration): string => {
-    return value.key;
-  };
+  constructor(private jobManagerService: JobManagerService, private cdr: ChangeDetectorRef) {}
 
-  constructor(private readonly jobManagerService: JobManagerService, private readonly cdr: ChangeDetectorRef) {}
-
-  ngOnInit(): void {
-    forkJoin([
-      this.jobManagerService.loadConfig().pipe(catchError(() => of([] as ClusterConfiguration[]))),
-      this.jobManagerService.loadEnvironment().pipe(catchError(() => of(undefined)))
-    ])
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(([config, env]) => {
-        this.loading = false;
-        this.listOfConfig = config.sort((pre, next) => (pre.key > next.key ? 1 : -1));
-        this.environmentInfo = env;
-        this.cdr.markForCheck();
-      });
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+  ngOnInit() {
+    this.jobManagerService.loadConfig().subscribe(data => {
+      this.listOfConfig = data;
+      this.cdr.markForCheck();
+    });
   }
 }

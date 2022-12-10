@@ -18,38 +18,41 @@
 
 package org.apache.flink.runtime.rest.messages;
 
-/** Termination mode query parameter. */
-public class TerminationModeQueryParameter
-        extends MessageQueryParameter<TerminationModeQueryParameter.TerminationMode> {
+import org.apache.flink.util.StringUtils;
 
-    private static final String key = "mode";
+/**
+ * Termination mode.
+ * @deprecated Only kept to detect legacy usages of the cancel/stop command. Please use the "stop" command instead.
+ */
+public class TerminationModeQueryParameter extends MessageQueryParameter<TerminationModeQueryParameter.TerminationMode> {
 
-    public TerminationModeQueryParameter() {
-        super(key, MessageParameterRequisiteness.OPTIONAL);
-    }
+	private static final String key = "mode";
 
-    @Override
-    public TerminationMode convertStringToValue(String value) {
-        return TerminationMode.valueOf(value.toUpperCase());
-    }
+	public TerminationModeQueryParameter() {
+		super(key, MessageParameterRequisiteness.OPTIONAL);
+	}
 
-    @Override
-    public String convertValueToString(TerminationMode value) {
-        return value.name().toLowerCase();
-    }
+	@Override
+	public TerminationMode convertStringToValue(String value) {
+		return TerminationMode.valueOf(value.toUpperCase());
+	}
 
-    @Override
-    public String getDescription() {
-        return "String value that specifies the termination mode. The only supported value is: \""
-                + TerminationMode.CANCEL.name().toLowerCase()
-                + "\".";
-    }
+	@Override
+	public String convertValueToString(TerminationMode value) {
+		return value.name().toLowerCase();
+	}
 
-    /** Termination mode. */
-    public enum TerminationMode {
-        CANCEL,
+	@Override
+	public String getDescription() {
+		return "String value that specifies the termination mode. Supported values are: " +
+			StringUtils.toQuotedListString(TerminationMode.values()) + '.';
+	}
 
-        /** @deprecated Please use the "stop" command instead. */
-        STOP
-    }
+	/**
+	 * @deprecated Please use the "stop" command instead.
+	 */
+	public enum TerminationMode {
+		CANCEL,
+		STOP
+	}
 }

@@ -16,125 +16,69 @@
  * limitations under the License.
  */
 
-import { DatePipe, NgForOf, NgIf, PercentPipe } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
-import { forkJoin, Subject } from 'rxjs';
-import { first, takeUntil } from 'rxjs/operators';
-
-import { HumanizeBytesPipe } from '@flink-runtime-web/components/humanize-bytes.pipe';
-import { HumanizeDurationPipe } from '@flink-runtime-web/components/humanize-duration.pipe';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnInit } from '@angular/core';
 import {
-  CheckpointCompletedStatistics,
-  CheckpointDetail,
-  JobDetailCorrect,
-  VerticesItem,
-  CheckpointConfig
-} from '@flink-runtime-web/interfaces';
-import { JobCheckpointsSubtaskComponent } from '@flink-runtime-web/pages/job/checkpoints/subtask/job-checkpoints-subtask.component';
-import { JobService } from '@flink-runtime-web/services';
-import { NzDividerModule } from 'ng-zorro-antd/divider';
-import { NzTableModule } from 'ng-zorro-antd/table';
-
-import { JobLocalService } from '../../job-local.service';
+  CheckPointCompletedStatisticsInterface,
+  CheckPointDetailInterface,
+  JobDetailCorrectInterface,
+  VerticesItemInterface
+} from 'interfaces';
+import { first } from 'rxjs/operators';
+import { JobService } from 'services';
 
 @Component({
   selector: 'flink-job-checkpoints-detail',
   templateUrl: './job-checkpoints-detail.component.html',
   styleUrls: ['./job-checkpoints-detail.component.less'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    NzDividerModule,
-    NzTableModule,
-    NgIf,
-    NgForOf,
-    PercentPipe,
-    HumanizeDurationPipe,
-    HumanizeBytesPipe,
-    JobCheckpointsSubtaskComponent,
-    DatePipe
-  ],
-  standalone: true
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class JobCheckpointsDetailComponent implements OnInit, OnDestroy {
-  public readonly trackById = (_: number, node: VerticesItem): string => node.id;
-
-  public innerCheckPoint: CheckpointCompletedStatistics;
-  public jobDetail: JobDetailCorrect;
-  public checkPointType: string;
-
-  public checkPointDetail: CheckpointDetail;
-  public checkPointConfig: CheckpointConfig;
-  public listOfVertex: VerticesItem[] = [];
-  public isLoading = true;
+export class JobCheckpointsDetailComponent implements OnInit {
+  innerCheckPoint: CheckPointCompletedStatisticsInterface;
+  jobDetail: JobDetailCorrectInterface;
 
   @Input()
-  public set checkPoint(value) {
+  set checkPoint(value) {
     this.innerCheckPoint = value;
     this.refresh();
   }
 
-  public get checkPoint(): CheckpointCompletedStatistics {
+  get checkPoint() {
     return this.innerCheckPoint;
   }
 
-  private destroy$ = new Subject<void>();
+  checkPointDetail: CheckPointDetailInterface;
+  listOfVertex: VerticesItemInterface[] = [];
+  isLoading = true;
 
-  constructor(
-    private readonly jobService: JobService,
-    private readonly jobLocalService: JobLocalService,
-    private readonly cdr: ChangeDetectorRef
-  ) {}
-
-  public ngOnInit(): void {
-    this.jobLocalService
-      .jobDetailChanges()
-      .pipe(first(), takeUntil(this.destroy$))
-      .subscribe(data => {
-        this.jobDetail = data;
-        this.listOfVertex = data!.vertices;
-        this.cdr.markForCheck();
-        this.refresh();
-      });
+  trackVertexBy(_: number, node: VerticesItemInterface) {
+    return node.id;
   }
 
-  public ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  public refresh(): void {
+  refresh() {
     this.isLoading = true;
     if (this.jobDetail && this.jobDetail.jid) {
-      forkJoin([
-        this.jobService.loadCheckpointConfig(this.jobDetail.jid),
-        this.jobService.loadCheckpointDetails(this.jobDetail.jid, this.checkPoint.id)
-      ])
-        .pipe(takeUntil(this.destroy$))
-        .subscribe(
-          ([config, detail]) => {
-            this.checkPointConfig = config;
-            this.checkPointDetail = detail;
-            if (this.checkPointDetail.checkpoint_type === 'CHECKPOINT') {
-              if (this.checkPointConfig.unaligned_checkpoints) {
-                this.checkPointType = 'unaligned checkpoint';
-              } else {
-                this.checkPointType = 'aligned checkpoint';
-              }
-            } else if (this.checkPointDetail.checkpoint_type === 'SYNC_SAVEPOINT') {
-              this.checkPointType = 'savepoint on cancel';
-            } else if (this.checkPointDetail.checkpoint_type === 'SAVEPOINT') {
-              this.checkPointType = 'savepoint';
-            } else {
-              this.checkPointType = '-';
-            }
-            this.isLoading = false;
-            this.cdr.markForCheck();
-          },
-          () => {
-            this.isLoading = false;
-            this.cdr.markForCheck();
-          }
-        );
+      this.jobService.loadCheckpointDetails(this.jobDetail.jid, this.checkPoint.id).subscribe(
+        data => {
+          this.checkPointDetail = data;
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        },
+        () => {
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        }
+      );
     }
+  }
+
+  constructor(private jobService: JobService, private cdr: ChangeDetectorRef) {}
+
+  ngOnInit() {
+    this.jobService.jobDetail$.pipe(first()).subscribe(data => {
+      this.jobDetail = data;
+      this.listOfVertex = data!.vertices;
+      this.cdr.markForCheck();
+      this.refresh();
+    });
   }
 }

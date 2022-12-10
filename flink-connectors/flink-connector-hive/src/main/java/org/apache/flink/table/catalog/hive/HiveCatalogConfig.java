@@ -18,13 +18,18 @@
 
 package org.apache.flink.table.catalog.hive;
 
-/** Configs for catalog meta-objects in {@link HiveCatalog}. */
+/**
+ * Configs for catalog meta-objects in {@link HiveCatalog}.
+ */
 public class HiveCatalogConfig {
 
-    // Table related configs
-    public static final String COMMENT = "comment";
-    public static final String DEFAULT_LIST_COLUMN_TYPES_SEPARATOR = ":";
+	// Database related configs
+	public static final String DATABASE_LOCATION_URI = "database.location_uri";
 
-    // Partition related configs
-    public static final String PARTITION_LOCATION = "partition.location";
+	// Table related configs
+	public static final String COMMENT = "comment";
+	public static final String DEFAULT_LIST_COLUMN_TYPES_SEPARATOR = ":";
+
+	// Partition related configs
+	public static final String PARTITION_LOCATION = "partition.location";
 }

@@ -16,12 +16,14 @@
 # limitations under the License.
 ################################################################################
 
-from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase, PyFlinkTestCase
+import unittest
+
+from pyflink.testing.test_case_utils import PythonAPICompletenessTestCase
 from pyflink.table.catalog import Catalog, CatalogDatabase, CatalogBaseTable, CatalogPartition, \
     CatalogFunction, CatalogColumnStatistics, CatalogPartitionSpec, ObjectPath
 
 
-class CatalogAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`Catalog` is consistent with
     Java `org.apache.flink.table.catalog.Catalog`.
@@ -38,17 +40,10 @@ class CatalogAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase
     @classmethod
     def excluded_methods(cls):
         # open/close are not needed in Python API as they are used internally
-        return {
-            'open',
-            'close',
-            'getFactory',
-            'getTableFactory',
-            'getFunctionDefinitionFactory',
-            'listPartitionsByFilter',
-            'supportsManagedTable'}
+        return {'open', 'close', 'getTableFactory'}
 
 
-class CatalogDatabaseAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogDatabaseAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogDatabase` is consistent with
     Java `org.apache.flink.table.catalog.CatalogDatabase`.
@@ -63,7 +58,7 @@ class CatalogDatabaseAPICompletenessTests(PythonAPICompletenessTestCase, PyFlink
         return "org.apache.flink.table.catalog.CatalogDatabase"
 
 
-class CatalogBaseTableAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogBaseTableAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogBaseTable` is consistent with
     Java `org.apache.flink.table.catalog.CatalogBaseTable`.
@@ -77,12 +72,8 @@ class CatalogBaseTableAPICompletenessTests(PythonAPICompletenessTestCase, PyFlin
     def java_class(cls):
         return "org.apache.flink.table.catalog.CatalogBaseTable"
 
-    @classmethod
-    def excluded_methods(cls):
-        return {'getUnresolvedSchema', 'getTableKind'}
 
-
-class CatalogFunctionAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogFunctionAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogFunction` is consistent with
     Java `org.apache.flink.table.catalog.CatalogFunction`.
@@ -96,12 +87,8 @@ class CatalogFunctionAPICompletenessTests(PythonAPICompletenessTestCase, PyFlink
     def java_class(cls):
         return "org.apache.flink.table.catalog.CatalogFunction"
 
-    @classmethod
-    def excluded_methods(cls):
-        return {'getFunctionResources'}
 
-
-class CatalogPartitionAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogPartitionAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogPartition` is consistent with
     Java `org.apache.flink.table.catalog.CatalogPartition`.
@@ -116,7 +103,7 @@ class CatalogPartitionAPICompletenessTests(PythonAPICompletenessTestCase, PyFlin
         return "org.apache.flink.table.catalog.CatalogPartition"
 
 
-class ObjectPathAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class ObjectPathAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`ObjectPath` is consistent with
     Java `org.apache.flink.table.catalog.ObjectPath`.
@@ -131,7 +118,7 @@ class ObjectPathAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestC
         return "org.apache.flink.table.catalog.ObjectPath"
 
 
-class CatalogPartitionSpecAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogPartitionSpecAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogPartitionSpec` is consistent with
     Java `org.apache.flink.table.catalog.CatalogPartitionSpec`.
@@ -146,7 +133,7 @@ class CatalogPartitionSpecAPICompletenessTests(PythonAPICompletenessTestCase, Py
         return "org.apache.flink.table.catalog.CatalogPartitionSpec"
 
 
-class CatalogColumnStatisticsAPICompletenessTests(PythonAPICompletenessTestCase, PyFlinkTestCase):
+class CatalogColumnStatisticsAPICompletenessTests(PythonAPICompletenessTestCase, unittest.TestCase):
     """
     Tests whether the Python :class:`CatalogColumnStatistics` is consistent with
     Java `org.apache.flink.table.catalog.CatalogColumnStatistics`.

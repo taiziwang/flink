@@ -19,26 +19,30 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.io.OutputFormat;
+import org.apache.flink.streaming.api.functions.sink.OutputFormatSinkFunction;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
- * A simple operator factory which create an operator containing an {@link OutputFormat}.
+ * A simple operator factory which create {@link StreamSink} containing an {@link OutputFormat}.
  *
  * @param <IN> The input type of the operator.
  */
 @Internal
-public class SimpleOutputFormatOperatorFactory<IN, OUT> extends SimpleOperatorFactory<OUT>
-        implements OutputFormatOperatorFactory<IN, OUT> {
+public class SimpleOutputFormatOperatorFactory<IN>
+	extends SimpleOperatorFactory<Object> implements OutputFormatOperatorFactory<IN> {
 
-    private final OutputFormat<IN> outputFormat;
+	private final StreamSink<IN> operator;
 
-    public SimpleOutputFormatOperatorFactory(
-            OutputFormat<IN> outputFormat, StreamOperator<OUT> operator) {
-        super(operator);
-        this.outputFormat = outputFormat;
-    }
+	public SimpleOutputFormatOperatorFactory(StreamSink<IN> operator) {
+		super(operator);
 
-    @Override
-    public OutputFormat<IN> getOutputFormat() {
-        return outputFormat;
-    }
+		checkState(operator.getUserFunction() instanceof OutputFormatSinkFunction);
+		this.operator = operator;
+	}
+
+	@Override
+	public OutputFormat<IN> getOutputFormat() {
+		return ((OutputFormatSinkFunction<IN>) operator.getUserFunction()).getFormat();
+	}
 }
